@@ -35,8 +35,15 @@ def get_analysis(wrong_question_id: int, db: Session = Depends(get_db)):
             confirmed=False,
         )
         db.add(analysis)
-        db.commit()
-        db.refresh(analysis)
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            analysis = db.query(AIAnalysis).filter(
+                AIAnalysis.wrong_question_id == wrong_question_id
+            ).first()
+        if analysis:
+            db.refresh(analysis)
 
     return AIAnalysisResponse(
         id=analysis.id,

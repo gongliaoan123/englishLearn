@@ -49,7 +49,7 @@ class AIClient:
                     {"role": "system", "content": system},
                     {"role": "user", "content": user},
                 ],
-                temperature=0.3,
+                temperature=0.1,
             )
             return response.choices[0].message.content
         else:

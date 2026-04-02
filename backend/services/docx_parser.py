@@ -5,28 +5,34 @@ from services.ai_client import AIClient
 
 PARSE_SYSTEM = """You are a strict English MCQ parser. Extract multiple-choice questions from the text below.
 
-FORMAT YOU WILL SEE:
-- Question line: "1. (2023·中考) Question text here?"
-- Options line: "A．answer1\tB．answer2\tC．answer3\tD．answer4"  (tab-separated, full-width dot)
-- Answer line: "【答案】A"
-- Explanation: "【详解】reason here"
-- Then next question...
+DOCUMENT STRUCTURE — each question occupies 4 consecutive lines:
+  Line 1 (question):  "N. (source) Question text?"  — ends with ? or contains a full question
+  Line 2 (options):    "A．option1\\tB．option2\\tC．option3\\tD．option4"  (tab-separated, full-width dot)
+  Line 3 (answer):      "【答案】A"  or "答案：A"
+  Line 4 (explanation): "【详解】explanation text here"  ← IGNORE THIS LINE, it is NOT a question!
+
+Then the next question starts on line 5.
+
+CRITICAL RULE: Any line that starts with "【详解】" or "详解" is explanation text for the PREVIOUS question.
+  It is NOT a question. Do NOT include it as question content.
+  Skip explanation lines entirely — they do not belong to any question.
 
 YOUR TASK:
+Read the input line by line. Group every 4 lines (question + options + answer + explanation).
 Extract all valid MCQs and return a JSON array. Each object:
 {
-  "content": "Question text (without the number and source)",
+  "content": "Question text only — strip the leading number and source tag like (2023·中考)",
   "options": {"A": "option A text", "B": "option B text", "C": "option C text", "D": "option D text"},
-  "answer": "A" (or B/C/D),
-  "explanation": "brief explanation"
+  "answer": "A"  (single letter A/B/C/D only)
 }
 
 IMPORTANT:
-- Return ONLY valid JSON array. No markdown fences, no explanation, no extra text.
-- Handle both "A)" and "A．" (full-width dot) formats.
-- Handle both "A" and "．A" in answer lines.
-- If a chunk has no valid questions, return [].
-- Every question must have exactly A, B, C, D options."""
+- Return ONLY a valid JSON array. No markdown fences, no explanation, no extra text.
+- options must be an object with keys A, B, C, D — never empty, never missing.
+- answer must be exactly "A", "B", "C", or "D" (not "A．", not "．A").
+- If a line starts with 【详解】or 详解, SKIP IT — do not treat it as a question.
+- If no valid MCQs are found in the chunk, return [].
+- Handle both "A)" and "A．" and "A\t" styles in the options line."""
 
 
 def extract_text_from_docx(file_path: str) -> list[str]:
