@@ -59,7 +59,13 @@ export default function QuestionBank() {
           )}
           {questions.map(q => (
             <div key={q.id} style={{ border: '1px solid #eee', borderRadius: 8, padding: 16 }}>
-              <p style={{ fontWeight: 500 }}>{q.content}</p>
+              {q.content.includes('\n')
+                ? q.content.split('\n').map((line, i, arr) => (
+                    <p key={i} style={{ fontWeight: 500, margin: 0, marginBottom: i < arr.length - 1 ? 4 : 0 }}>
+                      {line.trim()}
+                    </p>
+                  ))
+                : <p style={{ fontWeight: 500 }}>{q.content}</p>}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 8 }}>
                 {Object.entries(q.options).map(([k, v]) => (
                   <div key={k} style={{
@@ -73,6 +79,12 @@ export default function QuestionBank() {
                   </div>
                 ))}
               </div>
+              {q.explanation && (
+                <div style={{ marginTop: 10, padding: '10px 12px', background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 8, fontSize: 13, color: '#9A3412' }}>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>📖 详解</div>
+                  <div>{q.explanation}</div>
+                </div>
+              )}
               <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {q.tags && q.tags.map(t => (
                   <span key={t} style={{ background: '#EDE9FE', color: '#5B21B6', padding: '2px 8px', borderRadius: 12, fontSize: 11 }}>
