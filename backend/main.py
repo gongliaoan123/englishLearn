@@ -9,6 +9,18 @@ from database import engine, SessionLocal, get_db
 from models import Base
 Base.metadata.create_all(bind=engine)
 
+# Auto-add missing columns (for SQLite — does not auto ALTER existing tables)
+with engine.connect() as conn:
+    from sqlalchemy import text
+    for col_def in [
+        "ALTER TABLE questions ADD COLUMN explanation TEXT",
+    ]:
+        try:
+            conn.execute(text(col_def))
+            conn.commit()
+        except Exception:
+            pass
+
 app = FastAPI(title="English Wrong-Question Manager")
 
 app.add_middleware(

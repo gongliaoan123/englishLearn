@@ -13,6 +13,7 @@ class QuestionResponse(BaseModel):
     content: str
     options: dict
     answer: str
+    explanation: Optional[str]
     docx_filename: Optional[str]
     tags: list[str]
     source: str

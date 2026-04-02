@@ -12,6 +12,7 @@ class Question(Base):
     content = Column(Text, nullable=False)
     options = Column(JSON, nullable=False)          # {"A": "...", "B": "...", "C": "...", "D": "..."}
     answer = Column(String(1), nullable=False)     # "A" | "B" | "C" | "D"
+    explanation = Column(Text, nullable=True)       # 【详解】解析内容
     docx_filename = Column(String(255), nullable=True)
     source = Column(String(20), default="imported")  # "imported" | "ai_generated"
     created_at = Column(DateTime, default=datetime.utcnow)

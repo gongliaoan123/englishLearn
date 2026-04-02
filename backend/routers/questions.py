@@ -48,6 +48,7 @@ async def import_docx(file: UploadFile = File(...), db: Session = Depends(get_db
                 content=item["content"],
                 options=item["options"],
                 answer=item["answer"],
+                explanation=item.get("explanation") or None,
                 docx_filename=file.filename,
                 source="imported",
             )
@@ -79,6 +80,7 @@ def list_questions(db: Session = Depends(get_db), page: int = 1, page_size: int 
                 content=q.content,
                 options=q.options,
                 answer=q.answer,
+                explanation=q.explanation,
                 docx_filename=q.docx_filename,
                 tags=[t.name for t in q.tags],
                 source=q.source,

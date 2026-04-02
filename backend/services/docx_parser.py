@@ -37,7 +37,8 @@ Return a JSON array of objects:
 {
   "content": "The complete question text as a single string. If there was a blank (________) in the original, KEEP it as _________. If there was a follow-up answer line, include it too. Preserve the English as-is.",
   "options": {"A": "option A text", "B": "option B text", "C": "option C text", "D": "option D text"},
-  "answer": "A"  (single letter A or B or C or D)
+  "answer": "A"  (single letter A or B or C or D),
+  "explanation": "Extract the 【详解】text here. Include key grammar point if present. Return empty string if no explanation found."
 }
 
 ## RULES
