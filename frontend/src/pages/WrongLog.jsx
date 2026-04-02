@@ -38,15 +38,15 @@ export default function WrongLog() {
             const status = STATUS_LABEL[item.status] || STATUS_LABEL.pending_review
             return (
               <div key={item.id} style={{ border: '1px solid #eee', borderRadius: 8, padding: 16 }}>
-                <p style={{ fontWeight: 500, margin: '0 0 8px' }}>
-                  {item.content.includes('—')
-                    ? item.content.split('—').filter(Boolean).map((line, i, arr) => (
-                        <span key={i}>
-                          —{line.trim()}{i < arr.length - 1 && <br />}
-                        </span>
+                <div style={{ fontWeight: 500, marginBottom: 8 }}>
+                  {item.content.includes('\n') || item.content.includes('—')
+                    ? item.content.split(/\n|(—)/).filter(Boolean).map((line, i, arr) => (
+                        <p key={i} style={{ margin: 0, marginBottom: i < arr.length - 1 ? 4 : 0 }}>
+                          {line.trim().startsWith('—') ? line.trim() : `—${line.trim()}`}
+                        </p>
                       ))
-                    : item.content}
-                </p>
+                    : <p style={{ margin: 0 }}>{item.content}</p>}
+                </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <span style={{ background: status.bg, color: status.color, padding: '2px 8px', borderRadius: 12, fontSize: 12 }}>
                     {status.text}

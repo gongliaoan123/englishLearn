@@ -1,5 +1,25 @@
 import React, { useState } from 'react'
 
+function DialogueContent({ content }) {
+  if (!content) return null
+  // Split by em dash or newline, filter empty parts
+  const parts = content
+    .split(/\n|(—)/)
+    .filter(Boolean)
+  if (parts.length <= 1) {
+    return <p style={{ fontSize: 16, fontWeight: 500, marginBottom: 16 }}>{content}</p>
+  }
+  return (
+    <div style={{ marginBottom: 16 }}>
+      {parts.map((line, i) => (
+        <p key={i} style={{ fontSize: 16, fontWeight: 500, marginBottom: i < parts.length - 1 ? 8 : 0 }}>
+          {line.trim().startsWith('—') ? line.trim() : `—${line.trim()}`}
+        </p>
+      ))}
+    </div>
+  )
+}
+
 export default function QuestionCard({ question, onSubmit, submitting }) {
   const [selected, setSelected] = useState(null)
 
@@ -10,15 +30,7 @@ export default function QuestionCard({ question, onSubmit, submitting }) {
 
   return (
     <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 24, marginTop: 16 }}>
-      {question.content.includes('—') ? (
-        question.content.split('—').filter(Boolean).map((line, i) => (
-          <p key={i} style={{ fontSize: 16, fontWeight: 500, marginBottom: i < question.content.split('—').filter(Boolean).length - 1 ? 8 : 16 }}>
-            —{line.trim()}
-          </p>
-        ))
-      ) : (
-        <p style={{ fontSize: 16, fontWeight: 500, marginBottom: 16 }}>{question.content}</p>
-      )}
+      <DialogueContent content={question.content} />
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {Object.entries(question.options).map(([k, v]) => (
