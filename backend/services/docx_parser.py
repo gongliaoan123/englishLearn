@@ -26,7 +26,7 @@ Within a question group, lines have these possible types:
 
 Group lines into question blocks. For each block:
 1. Collect all question text lines (everything before the options)
-2. Combine multi-line question text into one string (join with " ")
+2. Combine multi-line question text into one string with NEWLINE between lines (use \n between separate dialogue lines or question parts)
 3. Extract A, B, C, D options (from one line or multiple lines)
 4. Extract answer (A/B/C/D)
 5. Output JSON
@@ -35,7 +35,7 @@ Group lines into question blocks. For each block:
 
 Return a JSON array of objects:
 {
-  "content": "The complete question text as a single string. If there was a blank (________) in the original, KEEP it as _________. If there was a follow-up answer line, include it too. Preserve the English as-is.",
+  "content": "The complete question text as a single string. Use \\n to separate multiple lines (e.g. dialogue lines). If there was a blank (________) in the original, KEEP it as _________. Preserve the English as-is.",
   "options": {"A": "option A text", "B": "option B text", "C": "option C text", "D": "option D text"},
   "answer": "A"  (single letter A or B or C or D),
   "explanation": "Extract the 【详解】text here. Include key grammar point if present. Return empty string if no explanation found."

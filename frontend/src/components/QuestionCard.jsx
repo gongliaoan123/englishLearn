@@ -2,12 +2,7 @@ import React, { useState } from 'react'
 
 function DialogueContent({ content }) {
   if (!content) return null
-  // Split by: explicit newline, OR "— " (em-dash + space) which is the
-  // most common separator between dialogue lines in this docx format.
-  // Use lookbehind (?<=—) to keep the part after the dash.
-  const parts = content
-    .split(/\n| — /)
-    .filter(Boolean)
+  const parts = content.split('\n').filter(Boolean)
   if (parts.length <= 1) {
     return <p style={{ fontSize: 16, fontWeight: 500, marginBottom: 16 }}>{content}</p>
   }
