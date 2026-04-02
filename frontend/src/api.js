@@ -25,6 +25,8 @@ export const api = {
     request('POST', '/questions/import', file),
   listQuestions: (page = 1) =>
     request('GET', `/questions?page=${page}`),
+  clearQuestions: () =>
+    request('DELETE', '/questions'),
 
   // Quiz
   startQuiz: () =>

@@ -6,7 +6,7 @@ from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from database import SessionLocal
-from models import Question, Tag
+from models import Question, Tag, QuestionTag, WrongQuestion, AIAnalysis
 from schemas import QuestionImportResponse, QuestionListResponse, QuestionResponse
 from services.docx_parser import extract_text_from_docx, parse_docx_via_ai
 from services.tag_service import get_or_create_tags
@@ -33,8 +33,8 @@ async def import_docx(file: UploadFile = File(...), db: Session = Depends(get_db
         tmp_path = tmp.name
 
     try:
-        raw_text = extract_text_from_docx(tmp_path)
-        parsed = parse_docx_via_ai(raw_text)
+        paragraphs = extract_text_from_docx(tmp_path)
+        parsed = parse_docx_via_ai(paragraphs)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI parsing failed: {str(e)}")
     finally:
@@ -94,3 +94,15 @@ def list_questions(db: Session = Depends(get_db), page: int = 1, page_size: int 
         ],
         total=total,
     )
+
+
+@router.delete("")
+def clear_all_questions(db: Session = Depends(get_db)):
+    """清空所有题目及相关数据（错题记录、标签、AI分析）。"""
+    db.query(AIAnalysis).delete()
+    db.query(WrongQuestion).delete()
+    db.query(QuestionTag).delete()
+    db.query(Question).delete()
+    db.query(Tag).delete()
+    db.commit()
+    return {"ok": True, "message": "题库已清空"}

@@ -15,10 +15,38 @@ export default function QuestionBank() {
     }).catch(() => {}).finally(() => setLoading(false))
   }, [page])
 
+  function handleClear() {
+    if (!window.confirm(`确定要清空全部 ${total} 道题目吗？此操作不可恢复！`)) return
+    api.clearQuestions().then(() => {
+      setQuestions([])
+      setTotal(0)
+    }).catch(err => alert('清空失败：' + err.message))
+  }
+
   return (
     <div style={{ paddingTop: 24 }}>
-      <h2>📚 题库</h2>
-      <p style={{ color: '#666' }}>共 {total} 题</p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h2>📚 题库</h2>
+          <p style={{ color: '#666', margin: '4px 0 0' }}>共 {total} 题</p>
+        </div>
+        {total > 0 && (
+          <button
+            onClick={handleClear}
+            style={{
+              padding: '8px 16px',
+              background: '#EF4444',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 6,
+              cursor: 'pointer',
+              fontSize: 13,
+            }}
+          >
+            🗑️ 清空题库
+          </button>
+        )}
+      </div>
 
       {loading ? (
         <p>加载中...</p>
