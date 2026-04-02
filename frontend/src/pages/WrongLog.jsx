@@ -40,9 +40,9 @@ export default function WrongLog() {
               <div key={item.id} style={{ border: '1px solid #eee', borderRadius: 8, padding: 16 }}>
                 <div style={{ fontWeight: 500, marginBottom: 8 }}>
                   {item.content.includes('\n') || item.content.includes('—')
-                    ? item.content.split(/\n|(—)/).filter(Boolean).map((line, i, arr) => (
+                    ? item.content.split(/\n| — /).filter(Boolean).map((line, i, arr) => (
                         <p key={i} style={{ margin: 0, marginBottom: i < arr.length - 1 ? 4 : 0 }}>
-                          {line.trim().startsWith('—') ? line.trim() : `—${line.trim()}`}
+                          {line.trim()}
                         </p>
                       ))
                     : <p style={{ margin: 0 }}>{item.content}</p>}
