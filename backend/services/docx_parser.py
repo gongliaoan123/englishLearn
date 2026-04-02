@@ -116,6 +116,17 @@ def _group_lines(lines: list[str]) -> list[list[str]]:
 
 
 def _parse_single_block(lines: list[str]) -> list[dict]:
+    """Parse a single question block via AI."""
+
+def _is_valid_question_block(block: list[str]) -> bool:
+    """Return True if this block looks like a real MCQ (has numbered question start)."""
+    if not block:
+        return False
+    first = block[0]
+    return bool(re.match(r'^\s*\d+[．.、]', first))
+
+
+def _parse_single_block(lines: list[str]) -> list[dict]:
     """
     Parse a single question block (list of lines) via AI.
     The block may contain question text + options + answer + explanation.
@@ -125,7 +136,7 @@ def _parse_single_block(lines: list[str]) -> list[dict]:
 
     chunk_text = "\n".join(f"[{i}] {line}" for i, line in enumerate(lines))
     ai = AIClient()
-    response = ai.chat(PARSE_SYSTEM, chunk_text)
+    response = ai.chat(PARSE_SYSTEM, chunk_text, max_tokens=2048)
     try:
         cleaned = _extract_json(response)
         result = json.loads(cleaned)
@@ -142,29 +153,29 @@ def parse_docx_stream(paragraphs: list[str], paragraphs_per_chunk: int = 40,
                        progress_callback=None) -> list[dict]:
     """
     Split paragraphs into question-aware chunks and parse each via AI.
-    Groups paragraphs into question blocks first, then batches blocks into chunks.
-    Calls progress_callback(chunk_idx, total_chunks) after each chunk.
+    Groups paragraphs into question blocks first, then parses each block individually.
+    Skips non-question blocks (section headers, TOC, etc.).
+    Calls progress_callback(block_idx, total_blocks) after each block.
     """
     blocks = _group_lines(paragraphs)
     if not blocks:
         return []
 
-    # Batch blocks into chunks of ~10 blocks each (roughly matches ~40 paragraphs)
     all_questions = []
-    total_chunks = (len(blocks) + 9) // 10
+    valid_blocks = [b for b in blocks if _is_valid_question_block(b)]
+    total = len(valid_blocks)
 
-    for i in range(0, len(blocks), 10):
-        chunk_blocks = blocks[i:i + 10]
-        chunk_lines = []
-        for block in chunk_blocks:
-            chunk_lines.extend(block)
-            chunk_lines.append("---")  # Block separator
+    for idx, block in enumerate(blocks):
+        # Skip non-question blocks (section headers, empty, etc.)
+        if not _is_valid_question_block(block):
+            if progress_callback:
+                progress_callback(idx + 1, total)
+            continue
 
-        chunk_idx = i // 10 + 1
-        block_questions = _parse_single_block(chunk_lines)
-        if block_questions:
-            all_questions.extend(block_questions)
+        questions = _parse_single_block(block)
+        if questions:
+            all_questions.extend(questions)
         if progress_callback:
-            progress_callback(chunk_idx, total_chunks)
+            progress_callback(idx + 1, total)
 
     return all_questions

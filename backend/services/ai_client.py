@@ -29,7 +29,7 @@ class AIClient:
         else:
             self.client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-    def chat(self, system: str, user: str, model: str = "gpt-4o") -> str:
+    def chat(self, system: str, user: str, model: str = "gpt-4o", max_tokens: int = 2048) -> str:
         if self.provider == "openai":
             response = self.client.chat.completions.create(
                 model=model,
@@ -37,6 +37,7 @@ class AIClient:
                     {"role": "system", "content": system},
                     {"role": "user", "content": user},
                 ],
+                max_tokens=max_tokens,
                 temperature=0.3,
             )
             return response.choices[0].message.content
@@ -49,6 +50,7 @@ class AIClient:
                     {"role": "system", "content": system},
                     {"role": "user", "content": user},
                 ],
+                max_tokens=max_tokens,
                 temperature=0.1,
             )
             return response.choices[0].message.content
