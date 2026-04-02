@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 load_dotenv()
 
-from database import engine, SessionLocal
+from database import engine, SessionLocal, get_db
 from models import Base
 Base.metadata.create_all(bind=engine)
 
@@ -18,13 +18,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 @app.on_event("startup")
 async def register_routers():
