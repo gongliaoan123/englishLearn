@@ -1,22 +1,11 @@
-import React, { useState, useCallback, useEffect } from 'react'
+import React, { useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api } from '../api'
+import { useQuiz } from '../contexts/QuizContext'
 import QuestionCard from '../components/QuestionCard'
 
-const LS_KEY = 'quiz_session'
-
-function saveSession(data) {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(data)) } catch {}
-}
-function loadSession() {
-  try { return JSON.parse(localStorage.getItem(LS_KEY) || 'null') } catch { return null }
-}
-function clearSession() {
-  try { localStorage.removeItem(LS_KEY) } catch {}
-}
-
+// 详解 / AI分析 折叠面板
 function ExplanationPanel({ explanation, analysis, tags, isWrong, loading }) {
-  const [expanded, setExpanded] = useState(true)
+  const [expanded, setExpanded] = React.useState(true)
   return (
     <div style={{ marginTop: 14, border: `1px solid ${isWrong ? '#FED7AA' : '#BFDBFE'}`, borderRadius: 10, overflow: 'hidden' }}>
       <button
@@ -65,180 +54,36 @@ function ExplanationPanel({ explanation, analysis, tags, isWrong, loading }) {
 
 export default function QuizSession() {
   const navigate = useNavigate()
-  const [sessionId, setSessionId] = useState(null)
-  // questions[i]: { question_id, content, options, explanation, answer, selectedAnswer, isCorrect, wrongQuestionId, analysisResult }
-  const [questions, setQuestions] = useState([])
-  // 当前在数组中的索引
-  const [currentIdx, setCurrentIdx] = useState(0)
-  const [submitting, setSubmitting] = useState(false)
-  const TOTAL = 10
+  const {
+    sessionId, questions, current, answerState, submitting,
+    analysisResult, wrongQuestionId, TOTAL,
+    startQuiz, submitAnswer, confirmAnalysis, skipAnalysis,
+    nextQuestion, prevQuestion,
+  } = useQuiz()
 
-  const current = questions[currentIdx]
-  const isAtLast = currentIdx === questions.length - 1
-  const currentPos = currentIdx + 1  // 1-indexed display
+  const currentPos = questions.length
 
-  // 挂载时恢复 session
-  useEffect(() => {
-    const saved = loadSession()
-    if (saved?.sessionId) {
-      setSessionId(saved.sessionId)
-      setQuestions(saved.questions || [])
-      setCurrentIdx(Math.min(saved.currentIdx || 0, (saved.questions?.length || 1) - 1))
-    }
-  }, [])
-
-  // 每次状态变化同步到 localStorage
-  useEffect(() => {
-    if (sessionId) {
-      saveSession({ sessionId, questions, currentIdx })
-    }
-  }, [sessionId, questions, currentIdx])
-
-  // 启动全新测试
-  const startQuiz = async () => {
-    const res = await api.startQuiz()
-    setSessionId(res.session_id)
-    setQuestions([])
-    setCurrentIdx(0)
-    const q = await api.nextQuestion(res.session_id, 1)
-    setQuestions([{ ...q, selectedAnswer: null, isCorrect: null, wrongQuestionId: null, analysisResult: null }])
-  }
-
-  // 添加新题（始终加到末尾并跳转）
-  const addNextQuestion = useCallback(async () => {
-    if (!sessionId) return
-    setSubmitting(true)
-    try {
-      const pos = questions.length + 1
-      const q = await api.nextQuestion(sessionId, pos)
-      setQuestions(prev => {
-        const next = [...prev, { ...q, selectedAnswer: null, isCorrect: null, wrongQuestionId: null, analysisResult: null }]
-        // 同步设置 idx，useEffect 下次 render 前 idx 已经更新
-        setCurrentIdx(next.length - 1)
-        return next
-      })
-    } catch (err) {
-      alert(err.message)
-    } finally {
-      setSubmitting(false)
-    }
-  }, [sessionId, questions.length])
-
-  // 提交答案
   const handleSubmit = useCallback(async (selected) => {
-    if (!current || !isAtLast || submitting) return
-    if (current.isCorrect !== null) return  // 已答过
-    setSubmitting(true)
-    try {
-      const res = await api.submitAnswer({
-        session_id: sessionId,
-        question_id: current.question_id,
-        selected_answer: selected,
-      })
-
-      setQuestions(prev => {
-        const updated = [...prev]
-        updated[currentIdx] = {
-          ...updated[currentIdx],
-          selectedAnswer: selected,
-          isCorrect: res.correct,
-          wrongQuestionId: res.wrong_question_id || null,
-          analysisResult: null,
-        }
-        return updated
-      })
-
-      if (res.is_session_over) {
-        clearSession()
-        navigate('/wrong-log')
-        return
-      }
-
-      if (!res.correct) {
-        // 异步加载 AI 分析
-        setQuestions(prev => {
-          const updated = [...prev]
-          updated[currentIdx] = { ...updated[currentIdx], isCorrect: false, wrongQuestionId: res.wrong_question_id }
-          return updated
-        })
-        try {
-          const a = await api.getAnalysis(res.wrong_question_id)
-          setQuestions(prev => {
-            const updated = [...prev]
-            updated[currentIdx] = { ...updated[currentIdx], analysisResult: a }
-            return updated
-          })
-        } catch {
-          setQuestions(prev => {
-            const updated = [...prev]
-            updated[currentIdx] = { ...updated[currentIdx], analysisResult: { analysis: '解析生成失败', suggested_tags: [] } }
-            return updated
-          })
-        }
-      }
-    } catch (err) {
-      alert(err.message)
-    } finally {
-      setSubmitting(false)
+    const res = await submitAnswer(selected)
+    if (res?.is_session_over) {
+      navigate('/wrong-log')
     }
-  }, [current, isAtLast, sessionId, currentIdx, submitting, navigate])
+  }, [submitAnswer, navigate])
 
-  // 确认分析 → 添加下一题
   const handleConfirm = async () => {
-    if (!current?.wrongQuestionId) return
-    setSubmitting(true)
-    try {
-      const tags = current.analysisResult?.suggested_tags || []
-      await api.confirmAnalysis(current.wrongQuestionId, tags)
-      if (questions.length >= TOTAL) {
-        clearSession()
-        navigate('/wrong-log')
-      } else {
-        addNextQuestion()
-      }
-    } catch (err) {
-      alert('操作失败：' + err.message)
-    } finally {
-      setSubmitting(false)
-    }
+    await confirmAnalysis(navigate)
   }
 
-  // 跳过分析 → 添加下一题
   const handleSkip = async () => {
-    if (!current?.wrongQuestionId) return
-    setSubmitting(true)
-    try {
-      await api.rejectAnalysis(current.wrongQuestionId)
-      if (questions.length >= TOTAL) {
-        clearSession()
-        navigate('/wrong-log')
-      } else {
-        addNextQuestion()
-      }
-    } catch (err) {
-      alert('操作失败：' + err.message)
-    } finally {
-      setSubmitting(false)
-    }
+    await skipAnalysis(navigate)
   }
 
-  // 上一题
-  const handlePrev = () => {
-    if (currentIdx > 0) {
-      setCurrentIdx(i => i - 1)
-    }
+  const handleNext = async () => {
+    await nextQuestion(navigate)
   }
 
-  // 下一题（仅当处于最后一题且未答完时可用）
-  const handleNext = () => {
-    if (currentIdx < questions.length - 1) {
-      setCurrentIdx(i => i + 1)
-    }
-  }
-
-  // --- 渲染 ---
-
-  if (!sessionId || questions.length === 0) {
+  // 未开始
+  if (!sessionId) {
     return (
       <div style={{ paddingTop: 40, textAlign: 'center' }}>
         <h2>✏️ 开始测试</h2>
@@ -257,10 +102,9 @@ export default function QuizSession() {
     return <p style={{ paddingTop: 40, textAlign: 'center' }}>加载中...</p>
   }
 
-  const isAnswered = current.isCorrect !== null
-  const isCorrect = current.isCorrect === true
-  const isWrong = current.isCorrect === false
-  const canSubmit = isAtLast && !isAnswered && !submitting
+  const btnStyle = { padding: '9px 18px', background: '#fff', border: '1px solid #ccc', borderRadius: 8, cursor: 'pointer' }
+  const primaryBtn = { flex: 1, padding: '10px 0', background: '#3B82F6', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 15 }
+  const greenBtn = { flex: 1, padding: '10px 0', background: '#22C55E', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 15 }
 
   return (
     <div style={{ paddingTop: 24 }}>
@@ -272,45 +116,43 @@ export default function QuizSession() {
       <div style={{ background: '#E5E7EB', height: 6, borderRadius: 3, marginTop: 8 }}>
         <div style={{ background: '#3B82F6', height: '100%', borderRadius: 3, width: `${(Math.min(currentPos, TOTAL) / TOTAL) * 100}%`, transition: 'width 0.3s' }} />
       </div>
-      <div style={{ marginTop: 10, fontSize: 13, color: '#666' }}>
-        第 {currentPos} 题
-        {questions.length > 1 && `（共 ${questions.length} 题，已答 ${questions.filter(q => q.isCorrect !== null).length} 题）`}
-      </div>
+      <div style={{ marginTop: 10, fontSize: 13, color: '#666' }}>第 {currentPos} 题</div>
 
-      {/* 题目卡片（仅最后一题可提交） */}
+      {/* 历史答题记录（答过的题目） */}
+      {questions.length > 1 && (
+        <div style={{ marginTop: 8 }}>
+          <span style={{ fontSize: 12, color: '#999' }}>已答 {currentPos - 1} 题</span>
+        </div>
+      )}
+
+      {/* 题目卡片 */}
       <QuestionCard
         question={current}
         onSubmit={handleSubmit}
         submitting={submitting}
-        disabled={!canSubmit}
+        disabled={answerState !== 'idle'}
       />
 
       {/* 答对 */}
-      {isCorrect && (
+      {answerState === 'correct' && (
         <>
           <div style={{ marginTop: 14, padding: 14, background: '#DCFCE7', borderRadius: 8, color: '#166534' }}>
             ✅ 正确！正确答案：{current.answer}
           </div>
           {current.explanation && (
-            <ExplanationPanel explanation={current.explanation} isWrong={false} loading={false} analysis={null} tags={null} />
+            <ExplanationPanel explanation={current.explanation} isWrong={false} loading={false} />
           )}
           <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-            {currentIdx > 0 && (
-              <button onClick={handlePrev} style={{ padding: '9px 18px', background: '#fff', border: '1px solid #ccc', borderRadius: 8, cursor: 'pointer' }}>
-                ← 上一题
-              </button>
-            )}
-            {currentIdx < questions.length - 1 ? (
-              <button onClick={handleNext} style={{ flex: 1, padding: '10px 0', background: '#3B82F6', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 15 }}>
-                下一题 →
-              </button>
-            ) : questions.length < TOTAL ? (
-              <button onClick={addNextQuestion} style={{ flex: 1, padding: '10px 0', background: '#3B82F6', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 15 }}>
-                下一题 →
+            {currentPos >= TOTAL ? (
+              <button
+                onClick={() => navigate('/wrong-log')}
+                style={{ ...primaryBtn, background: '#6B7280' }}
+              >
+                查看错题本
               </button>
             ) : (
-              <button onClick={() => { clearSession(); navigate('/wrong-log') }} style={{ flex: 1, padding: '10px 0', background: '#3B82F6', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 15 }}>
-                查看结果
+              <button onClick={handleNext} style={primaryBtn}>
+                下一题 →
               </button>
             )}
           </div>
@@ -318,50 +160,27 @@ export default function QuizSession() {
       )}
 
       {/* 答错 */}
-      {isWrong && (
+      {answerState === 'wrong' && (
         <>
           <div style={{ marginTop: 14, padding: 14, background: '#FEE2E2', borderRadius: 8, color: '#991B1B' }}>
             ❌ 错误！你选了 {current.selectedAnswer}，正确答案：{current.answer}
           </div>
           <ExplanationPanel
             explanation={current.explanation}
-            analysis={current.analysisResult?.analysis}
-            tags={current.analysisResult?.suggested_tags}
+            analysis={analysisResult?.analysis}
+            tags={analysisResult?.suggested_tags}
             isWrong={true}
-            loading={!current.analysisResult && submitting}
+            loading={false}
           />
           <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-            {currentIdx > 0 && (
-              <button onClick={handlePrev} style={{ padding: '9px 18px', background: '#fff', border: '1px solid #ccc', borderRadius: 8, cursor: 'pointer' }}>
-                ← 上一题
-              </button>
-            )}
-            <button onClick={handleSkip} style={{ padding: '10px 14px', background: '#fff', border: '1px solid #ccc', borderRadius: 8, cursor: 'pointer' }}>
+            <button onClick={handleSkip} style={{ ...btnStyle, padding: '10px 14px' }}>
               跳过
             </button>
-            <button
-              onClick={handleConfirm}
-              disabled={submitting}
-              style={{ flex: 1, padding: '10px 0', background: '#22C55E', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 15 }}
-            >
+            <button onClick={handleConfirm} disabled={submitting} style={{ ...greenBtn, opacity: submitting ? 0.6 : 1 }}>
               {submitting ? '处理中...' : '✅ 确认，开始举一反三'}
             </button>
           </div>
         </>
-      )}
-
-      {/* 未答且非最后一题 */}
-      {!isAnswered && !isAtLast && (
-        <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-          {currentIdx > 0 && (
-            <button onClick={handlePrev} style={{ padding: '9px 18px', background: '#fff', border: '1px solid #ccc', borderRadius: 8, cursor: 'pointer' }}>
-              ← 上一题
-            </button>
-          )}
-          <button onClick={handleNext} style={{ flex: 1, padding: '10px 0', background: '#3B82F6', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 15 }}>
-            下一题 →
-          </button>
-        </div>
       )}
 
       <div style={{ height: 40 }} />
