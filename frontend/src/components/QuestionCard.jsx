@@ -18,7 +18,7 @@ function DialogueContent({ content }) {
 }
 
 export default function QuestionCard({ question, onSubmit, submitting }) {
-  const [selected, setSelected] = useState(null)
+  const [selected, setSelected] = useState(question.selectedAnswer ?? null)
 
   function handleSubmit() {
     if (!selected) return
