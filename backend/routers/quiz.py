@@ -42,6 +42,7 @@ def next_question(session_id: str, current: int = 1, db: Session = Depends(get_d
         question_id=q.id,
         content=q.content,
         options=q.options,
+        answer=q.answer,
         explanation=q.explanation,
         current=current,
         total=SESSION_SIZE,

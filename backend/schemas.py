@@ -37,6 +37,7 @@ class QuizNextResponse(BaseModel):
     question_id: int
     content: str
     options: dict
+    answer: str
     explanation: Optional[str]
     current: int   # 1-indexed position in session
     total: int      # 10
