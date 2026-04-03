@@ -130,11 +130,16 @@ export function QuizProvider({ children }) {
 
   // 下一题
   const nextQuestion = useCallback(async (navigate) => {
+    // 先尝试跳到已有题目
+    if (currentPos < questions.length - 1) {
+      jumpTo(currentPos + 1)
+      return
+    }
+    // 真的没有下一题了，才创建新的
     if (questions.length >= TOTAL) {
       navigate('/wrong-log')
       return
     }
-    // 预加载下一题到 questions
     setSubmitting(true)
     setAnswerState('idle')
     setAnalysisResult(null)
@@ -149,7 +154,7 @@ export function QuizProvider({ children }) {
     } finally {
       setSubmitting(false)
     }
-  }, [questions.length, sessionId])
+  }, [currentPos, questions.length, sessionId])
 
   // 上一题
   const prevQuestion = useCallback(() => {
