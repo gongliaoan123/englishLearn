@@ -136,6 +136,7 @@ export default function QuizSession() {
 
       {/* 题目卡片 */}
       <QuestionCard
+        key={current.question_id}
         question={current}
         onSubmit={handleSubmit}
         submitting={submitting}
