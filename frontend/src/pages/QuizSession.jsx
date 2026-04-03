@@ -129,7 +129,7 @@ export default function QuizSession() {
       </div>
       <div style={{ marginTop: 10, fontSize: 13, color: '#666' }}>
         第 {displayPos} 题
-        <span style={{ color: isCurrentUnanswered ? '#9CA3AF' : '#22C55E', marginLeft: 8 }}>
+        <span style={{ color: isCurrentUnanswered ? '#9CA3AF' : current.isCorrect ? '#22C55E' : '#EF4444', marginLeft: 8 }}>
           {isCurrentUnanswered ? '（未答）' : current.isCorrect ? '✓ 正确' : '✗ 错误'}
         </span>
       </div>
