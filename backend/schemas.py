@@ -56,7 +56,8 @@ class QuizAnswerResponse(BaseModel):
 class SessionSummaryResponse(BaseModel):
     session_id: str
     total: int
-    correct: int
+    correct: bool        # whether the final answer was correct
+    correct_count: int  # how many correct in total
     wrong: int
     wrong_question_ids: list[int]
 

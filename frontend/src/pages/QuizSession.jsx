@@ -49,17 +49,18 @@ function ExplanationPanel({ explanation, analysis, tags, isWrong }) {
   )
 }
 
-function NavDots({ questions, currentPos, onJump }) {
+function NavDots({ questions, currentPos, currentIsCorrect, onJump }) {
   return (
     <div style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: 5, flexWrap: 'wrap' }}>
       {questions.map((q, i) => {
         const isCurrent = i === currentPos
-        const bg = q.isCorrect === true ? '#22C55E' : q.isCorrect === false ? '#EF4444' : '#9CA3AF'
+        const isCorrect = isCurrent ? currentIsCorrect : q.isCorrect
+        const bg = isCorrect == true ? '#22C55E' : isCorrect == false ? '#EF4444' : '#9CA3AF'
         return (
           <button
             key={i}
             onClick={() => onJump(i)}
-            title={`第${i + 1}题${q.isCorrect === null ? '（未答）' : q.isCorrect ? '✓' : '✗'}`}
+            title={`第${i + 1}题${isCorrect === null ? '（未答）' : isCorrect ? '✓' : '✗'}`}
             style={{
               width: 24, height: 24, borderRadius: '50%',
               background: bg,
@@ -113,7 +114,7 @@ export default function QuizSession() {
   const canGoPrev = currentPos > 0
   const canGoNext = currentPos < questions.length - 1
   const isCurrentUnanswered = current.isCorrect === null
-  const isAllDone = questions.length >= TOTAL && !isCurrentUnanswered
+  const isAllDone = displayPos >= TOTAL && !isCurrentUnanswered
 
   const btn = { padding: '8px 12px', border: '1px solid #ccc', borderRadius: 8, background: '#fff', fontSize: 13, cursor: 'pointer', flexShrink: 0 }
 
@@ -196,7 +197,7 @@ export default function QuizSession() {
           ← 上一题
         </button>
 
-        <NavDots questions={questions} currentPos={currentPos} onJump={jumpTo} />
+        <NavDots questions={questions} currentPos={currentPos} currentIsCorrect={current.isCorrect} onJump={jumpTo} />
 
         {/* 操作按钮：只有答错且未处理时才显示 */}
         {answerState === 'wrong' && wrongQuestionId !== null && (
@@ -210,15 +211,26 @@ export default function QuizSession() {
           </>
         )}
 
-        {/* 下一题：始终显示 */}
+        {/* 下一题：最后一题时不显示（防止尝试加载不存在的题） */}
         {answerState !== 'wrong' || wrongQuestionId === null ? (
-          <button
-            onClick={isAllDone ? () => navigate('/wrong-log') : () => nextQuestion(navigate)}
-            style={{ ...btn, background: isAllDone ? '#6B7280' : '#3B82F6', color: '#fff', border: 'none', flexShrink: 0 }}
-          >
-            {isAllDone ? '查看结果' : '下一题 →'}
-          </button>
+          displayPos < TOTAL && (
+            <button
+              onClick={() => nextQuestion(navigate)}
+              style={{ ...btn, background: '#3B82F6', color: '#fff', border: 'none', flexShrink: 0 }}
+            >
+              下一题 →
+            </button>
+          )
         ) : null}
+        {/* 最后一题且已答 → 查看结果 */}
+        {isAllDone && (
+          <button
+            onClick={() => navigate('/wrong-log')}
+            style={{ ...btn, background: '#6B7280', color: '#fff', border: 'none', flexShrink: 0 }}
+          >
+            查看结果
+          </button>
+        )}
       </div>
     </div>
   )

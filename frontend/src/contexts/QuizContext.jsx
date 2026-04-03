@@ -105,28 +105,28 @@ export function QuizProvider({ children }) {
     setAnswerState('idle')
     setAnalysisResult(null)
     setWrongQuestionId(null)
-    if (questions.length >= TOTAL) {
-      navigate('/wrong-log')
-      return
-    }
-    const nextPos = questions.length
-    // 已经有下一题了（之前预加载的），直接跳
+    const nextPos = currentPos + 1
+    // 已有下一题，直接跳
     if (nextPos < questions.length) {
       setCurrentPos(nextPos)
       return
     }
-    // fetch 新题并追加
+    // 需要创建新题
+    if (questions.length >= TOTAL) {
+      navigate('/wrong-log')
+      return
+    }
     setSubmitting(true)
     try {
-      const q = await api.nextQuestion(sessionId, nextPos + 1)
+      const q = await api.nextQuestion(sessionId, questions.length + 1)
       setQuestions(prev => [...prev, { ...q, selectedAnswer: null, isCorrect: null }])
-      setCurrentPos(nextPos)
+      setCurrentPos(questions.length)
     } catch (err) {
       console.error(err)
     } finally {
       setSubmitting(false)
     }
-  }, [questions.length, sessionId])
+  }, [currentPos, questions.length, sessionId])
 
   // 下一题
   const nextQuestion = useCallback(async (navigate) => {

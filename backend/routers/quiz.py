@@ -72,7 +72,8 @@ def submit_answer(body: QuizAnswerRequest, db: Session = Depends(get_db)):
         return SessionSummaryResponse(
             session_id=body.session_id,
             total=SESSION_SIZE,
-            correct=correct_count,
+            correct=correct,
+            correct_count=correct_count,
             wrong=SESSION_SIZE - correct_count,
             wrong_question_ids=[],
         )
