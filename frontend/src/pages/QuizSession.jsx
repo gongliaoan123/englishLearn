@@ -1,7 +1,19 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import QuestionCard from '../components/QuestionCard'
+
+const LS_KEY = 'quiz_session'
+
+function saveSession(data) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(data)) } catch {}
+}
+function loadSession() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || 'null') } catch { return null }
+}
+function clearSession() {
+  try { localStorage.removeItem(LS_KEY) } catch {}
+}
 
 // 详解 / AI分析 折叠面板
 function ExplanationPanel({ explanation, analysis, tags, isWrong, loading }) {
@@ -66,11 +78,30 @@ export default function QuizSession() {
   const [wrongQuestionId, setWrongQuestionId] = useState(null)
   const TOTAL = 10
 
+  // 挂载时恢复 localStorage 中的 session
+  useEffect(() => {
+    const saved = loadSession()
+    if (saved?.sessionId) {
+      setSessionId(saved.sessionId)
+      setQuestions(saved.questions || [])
+      setAnswerState(saved.answerState || 'idle')
+      setAnalysisResult(saved.analysisResult || null)
+      setWrongQuestionId(saved.wrongQuestionId || null)
+    }
+  }, [])
+
+  // 每次状态变化同步到 localStorage
+  useEffect(() => {
+    if (sessionId) {
+      saveSession({ sessionId, questions, answerState, analysisResult, wrongQuestionId })
+    }
+  }, [sessionId, questions, answerState, analysisResult, wrongQuestionId])
+
   // 当前题目（最后一个）
   const current = questions[questions.length - 1]
   const currentPos = questions.length  // 1-indexed
 
-  // 启动测试
+  // 启动全新测试
   const startQuiz = async () => {
     const res = await api.startQuiz()
     setSessionId(res.session_id)
@@ -116,6 +147,7 @@ export default function QuizSession() {
       })
 
       if (res.is_session_over) {
+        clearSession()
         navigate('/wrong-log')
         return
       }
@@ -150,6 +182,7 @@ export default function QuizSession() {
       const tags = analysisResult?.suggested_tags || []
       await api.confirmAnalysis(wrongQuestionId, tags)
       if (questions.length >= TOTAL) {
+        clearSession()
         navigate('/wrong-log')
       } else {
         await _fetchNext(sessionId, questions.length + 1)
@@ -168,6 +201,7 @@ export default function QuizSession() {
     try {
       await api.rejectAnalysis(wrongQuestionId)
       if (questions.length >= TOTAL) {
+        clearSession()
         navigate('/wrong-log')
       } else {
         await _fetchNext(sessionId, questions.length + 1)
@@ -253,7 +287,14 @@ export default function QuizSession() {
               </button>
             )}
             <button
-              onClick={() => _fetchNext(sessionId, currentPos + 1)}
+              onClick={() => {
+                if (currentPos >= TOTAL) {
+                  clearSession()
+                  navigate('/wrong-log')
+                } else {
+                  _fetchNext(sessionId, currentPos + 1)
+                }
+              }}
               style={{ flex: 1, padding: '10px 0', background: '#3B82F6', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 15 }}
             >
               {currentPos >= TOTAL ? '查看结果' : '下一题 →'}
