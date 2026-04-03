@@ -189,7 +189,7 @@ export default function QuizSession() {
               跳过
             </button>
             <button onClick={() => confirmAnalysis(navigate)} disabled={submitting} style={{ ...btn, background: '#22C55E', color: '#fff', border: 'none', opacity: submitting ? 0.6 : 1 }}>
-              {submitting ? '...' : '确认'}
+              {submitting ? '...' : '加入错题本'}
             </button>
           </>
         ) : (
