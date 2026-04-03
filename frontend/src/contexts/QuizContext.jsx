@@ -5,17 +5,22 @@ const QuizContext = createContext(null)
 
 export function QuizProvider({ children }) {
   const [sessionId, setSessionId] = useState(null)
-  // questions: full list of questions in order
+  // questions: only contains questions that have been ANSWERED (with result)
+  // unanswered future questions are NOT in this array
   const [questions, setQuestions] = useState([])
-  // currentPos: index into questions array (-1 = not started)
+  // currentPos: index into questions (-1 = first question not yet answered)
+  // first unanswered question is always at index = questions.length
   const [currentPos, setCurrentPos] = useState(-1)
+  // tempCurrent: the question currently being displayed (not yet answered)
+  const [tempCurrent, setTempCurrent] = useState(null)
   const [answerState, setAnswerState] = useState('idle')  // 'idle' | 'correct' | 'wrong'
   const [analysisResult, setAnalysisResult] = useState(null)
   const [wrongQuestionId, setWrongQuestionId] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const TOTAL = 10
 
-  const current = currentPos >= 0 ? questions[currentPos] : null
+  // The question to display: tempCurrent (unanswered) first, then questions[currentPos]
+  const current = tempCurrent
 
   // 启动测试
   const startQuiz = useCallback(async () => {
@@ -26,27 +31,28 @@ export function QuizProvider({ children }) {
     setAnswerState('idle')
     setAnalysisResult(null)
     setWrongQuestionId(null)
-    await _fetchNext(res.session_id, 1)
+    setTempCurrent(null)
+    await _fetchNext(res.session_id)
   }, [])
 
-  // 获取下一题并追加到列表
-  const _fetchNext = useCallback(async (sid, pos) => {
+  // 获取下一题到 tempCurrent（不追加到 questions 数组）
+  const _fetchNext = useCallback(async (sid) => {
     setSubmitting(true)
     setAnswerState('idle')
     setAnalysisResult(null)
     setWrongQuestionId(null)
     try {
+      const pos = questions.length + 1
       const q = await api.nextQuestion(sid, pos)
-      setQuestions(prev => [...prev, { ...q, selectedAnswer: null, isCorrect: null }])
-      setCurrentPos(prev => prev + 1)
+      setTempCurrent({ ...q, selectedAnswer: null, isCorrect: null })
     } catch (err) {
       console.error('fetchNext error:', err)
     } finally {
       setSubmitting(false)
     }
-  }, [])
+  }, [questions.length])
 
-  // 提交答案（更新当前题）
+  // 提交答案（将 tempCurrent 移入 questions，更新 currentPos）
   const submitAnswer = useCallback(async (selected) => {
     if (!current || answerState !== 'idle' || submitting) return
     setSubmitting(true)
@@ -56,15 +62,15 @@ export function QuizProvider({ children }) {
         question_id: current.question_id,
         selected_answer: selected,
       })
-      setQuestions(prev => {
-        const updated = [...prev]
-        updated[currentPos] = {
-          ...updated[currentPos],
-          selectedAnswer: selected,
-          isCorrect: res.correct,
-        }
-        return updated
-      })
+      const answered = {
+        ...current,
+        selectedAnswer: selected,
+        isCorrect: res.correct,
+      }
+      setQuestions(prev => [...prev, answered])
+      setCurrentPos(prev => prev + 1)
+      setTempCurrent(null)
+
       if (res.correct) {
         setAnswerState('correct')
       } else {
@@ -81,29 +87,26 @@ export function QuizProvider({ children }) {
     } finally {
       setSubmitting(false)
     }
-  }, [current, currentPos, sessionId, answerState, submitting])
+  }, [current, sessionId, answerState, submitting])
 
-  // 跳转到指定题
+  // 跳转到指定已答题目
   const jumpTo = useCallback((idx) => {
     if (idx < 0 || idx >= questions.length) return
-    const target = questions[idx]
     setCurrentPos(idx)
+    setTempCurrent(null)
+    const target = questions[idx]
     if (target.isCorrect === true) {
       setAnswerState('correct')
-      setWrongQuestionId(null)
-      setAnalysisResult(null)
     } else if (target.isCorrect === false) {
       setAnswerState('wrong')
       setWrongQuestionId(null)
       setAnalysisResult(null)
     } else {
       setAnswerState('idle')
-      setWrongQuestionId(null)
-      setAnalysisResult(null)
     }
   }, [questions])
 
-  // 确认分析 → 下一题
+  // 确认分析 → 下一题（将 tempCurrent 追加，fetch 新题）
   const confirmAnalysis = useCallback(async (navigate) => {
     if (!wrongQuestionId) return
     setSubmitting(true)
@@ -113,7 +116,11 @@ export function QuizProvider({ children }) {
       if (questions.length >= TOTAL) {
         navigate('/wrong-log')
       } else {
-        await _fetchNext(sessionId, questions.length + 1)
+        setWrongQuestionId(null)
+        setAnalysisResult(null)
+        setAnswerState('idle')
+        // fetch next into tempCurrent
+        await _fetchNext(sessionId)
       }
     } catch (err) {
       alert('操作失败：' + err.message)
@@ -131,7 +138,10 @@ export function QuizProvider({ children }) {
       if (questions.length >= TOTAL) {
         navigate('/wrong-log')
       } else {
-        await _fetchNext(sessionId, questions.length + 1)
+        setWrongQuestionId(null)
+        setAnalysisResult(null)
+        setAnswerState('idle')
+        await _fetchNext(sessionId)
       }
     } catch (err) {
       alert('操作失败：' + err.message)
@@ -140,24 +150,44 @@ export function QuizProvider({ children }) {
     }
   }, [wrongQuestionId, questions.length, sessionId, _fetchNext])
 
-  // 下一题
+  // 答对后下一题（追加当前题，fetch 新题）
   const nextQuestion = useCallback(async (navigate) => {
-    if (currentPos < questions.length - 1) {
-      // 还有已答的题可以往后翻
-      jumpTo(currentPos + 1)
-    } else if (questions.length >= TOTAL) {
+    // 先把 tempCurrent 追加进 questions（如果没有的话）
+    if (tempCurrent) {
+      const answered = { ...tempCurrent, selectedAnswer: null, isCorrect: null }
+      setQuestions(prev => [...prev, answered])
+      setCurrentPos(prev => prev + 1)
+      setTempCurrent(null)
+    }
+    if (questions.length + (tempCurrent ? 1 : 0) >= TOTAL) {
       navigate('/wrong-log')
     } else {
-      await _fetchNext(sessionId, questions.length + 1)
+      await _fetchNext(sessionId)
     }
-  }, [currentPos, questions.length, sessionId, _fetchNext, jumpTo])
+  }, [questions.length, tempCurrent, sessionId, _fetchNext])
 
   // 上一题
   const prevQuestion = useCallback(() => {
-    if (currentPos > 0) {
-      jumpTo(currentPos - 1)
+    if (tempCurrent) {
+      // 还没答当前题，删除 tempCurrent，回复到上一题
+      setTempCurrent(null)
+      setAnswerState('idle')
+    } else if (currentPos > 0) {
+      // 跳转到上一题
+      const prevIdx = currentPos - 1
+      const target = questions[prevIdx]
+      setCurrentPos(prevIdx)
+      if (target.isCorrect === true) {
+        setAnswerState('correct')
+      } else if (target.isCorrect === false) {
+        setAnswerState('wrong')
+        setWrongQuestionId(null)
+        setAnalysisResult(null)
+      } else {
+        setAnswerState('idle')
+      }
     }
-  }, [currentPos, jumpTo])
+  }, [tempCurrent, currentPos, questions])
 
   return (
     <QuizContext.Provider value={{
