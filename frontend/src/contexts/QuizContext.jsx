@@ -12,6 +12,7 @@ export function QuizProvider({ children }) {
   const [analysisResult, setAnalysisResult] = useState(null)
   const [wrongQuestionId, setWrongQuestionId] = useState(null)
   const [submitting, setSubmitting] = useState(false)
+  const [confirmedWrongIds, setConfirmedWrongIds] = useState(() => new Set())
   const TOTAL = 10
 
   // current = the question currently displayed (at currentPos)
@@ -27,6 +28,7 @@ export function QuizProvider({ children }) {
     setAnswerState('idle')
     setAnalysisResult(null)
     setWrongQuestionId(null)
+    setConfirmedWrongIds(() => new Set())
     // fetch first question
     const q = await api.nextQuestion(res.session_id, 1)
     setQuestions([{ ...q, selectedAnswer: null, isCorrect: null }])
@@ -74,6 +76,7 @@ export function QuizProvider({ children }) {
     try {
       const tags = analysisResult?.suggested_tags || []
       await api.confirmAnalysis(wrongQuestionId, tags)
+      setConfirmedWrongIds(prev => new Set([...prev, wrongQuestionId]))
       await _loadNext(navigate)
     } catch (err) {
       alert('操作失败：' + err.message)
@@ -88,6 +91,7 @@ export function QuizProvider({ children }) {
     setSubmitting(true)
     try {
       await api.rejectAnalysis(wrongQuestionId)
+      setConfirmedWrongIds(prev => new Set([...prev, wrongQuestionId]))
       await _loadNext(navigate)
     } catch (err) {
       alert('操作失败：' + err.message)
@@ -186,7 +190,7 @@ export function QuizProvider({ children }) {
   return (
     <QuizContext.Provider value={{
       sessionId, questions, current, currentPos, answerState, submitting,
-      analysisResult, wrongQuestionId, TOTAL,
+      analysisResult, wrongQuestionId, confirmedWrongIds, TOTAL,
       startQuiz, submitAnswer, confirmAnalysis, skipAnalysis,
       nextQuestion, prevQuestion, jumpTo,
     }}>

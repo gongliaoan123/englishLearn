@@ -80,7 +80,7 @@ export default function QuizSession() {
   const navigate = useNavigate()
   const {
     sessionId, questions, current, currentPos, answerState, submitting,
-    analysisResult, wrongQuestionId, TOTAL,
+    analysisResult, wrongQuestionId, confirmedWrongIds, TOTAL,
     startQuiz, submitAnswer, confirmAnalysis, skipAnalysis,
     nextQuestion, prevQuestion, jumpTo,
   } = useQuiz()
@@ -167,6 +167,12 @@ export default function QuizSession() {
             tags={analysisResult?.suggested_tags}
             isWrong={true}
           />
+          {/* 已处理过的错题：绿色提示 */}
+          {wrongQuestionId === null && (
+            <div style={{ marginTop: 12, padding: '10px 14px', background: '#DCFCE7', borderRadius: 8, color: '#166534', fontSize: 14 }}>
+              ✓ 已加入错题本
+            </div>
+          )}
         </>
       )}
 
@@ -184,23 +190,27 @@ export default function QuizSession() {
 
         <NavDots questions={questions} currentPos={currentPos} onJump={jumpTo} />
 
-        {answerState === 'wrong' ? (
+        {/* 操作按钮：只有答错且未处理时才显示 */}
+        {answerState === 'wrong' && wrongQuestionId !== null && (
           <>
-            <button onClick={skipAnalysis} disabled={submitting} style={{ ...btn, color: '#666' }}>
+            <button onClick={skipAnalysis} disabled={submitting} style={{ ...btn, color: '#666', flexShrink: 0 }}>
               跳过
             </button>
-            <button onClick={() => confirmAnalysis(navigate)} disabled={submitting} style={{ ...btn, background: '#22C55E', color: '#fff', border: 'none', opacity: submitting ? 0.6 : 1 }}>
+            <button onClick={() => confirmAnalysis(navigate)} disabled={submitting} style={{ ...btn, background: '#22C55E', color: '#fff', border: 'none', opacity: submitting ? 0.6 : 1, flexShrink: 0 }}>
               {submitting ? '...' : '加入错题本'}
             </button>
           </>
-        ) : (
+        )}
+
+        {/* 下一题：始终显示 */}
+        {answerState !== 'wrong' || wrongQuestionId === null ? (
           <button
             onClick={isAllDone ? () => navigate('/wrong-log') : () => nextQuestion(navigate)}
-            style={{ ...btn, background: isAllDone ? '#6B7280' : '#3B82F6', color: '#fff', border: 'none' }}
+            style={{ ...btn, background: isAllDone ? '#6B7280' : '#3B82F6', color: '#fff', border: 'none', flexShrink: 0 }}
           >
-            {isAllDone ? '查看结果' : canGoNext ? '下一题 →' : '下一题 →'}
+            {isAllDone ? '查看结果' : '下一题 →'}
           </button>
-        )}
+        ) : null}
       </div>
     </div>
   )
