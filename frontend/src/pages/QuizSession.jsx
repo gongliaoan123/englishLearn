@@ -121,7 +121,15 @@ export default function QuizSession() {
     <div style={{ paddingTop: 24, paddingBottom: 80 }}>
       {/* 进度 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 style={{ margin: 0 }}>✏️ 测试中</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <h2 style={{ margin: 0 }}>✏️ 测试中</h2>
+          <button
+            onClick={() => { if (window.confirm('确定要重新开始吗？当前进度将丢失。')) startQuiz() }}
+            style={{ padding: '4px 12px', background: '#fff', color: '#EF4444', border: '1px solid #EF4444', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}
+          >
+            重新开始
+          </button>
+        </div>
         <span style={{ color: '#666' }}>{Math.min(questions.length, TOTAL)} / {TOTAL}</span>
       </div>
       <div style={{ background: '#E5E7EB', height: 6, borderRadius: 3, marginTop: 8 }}>

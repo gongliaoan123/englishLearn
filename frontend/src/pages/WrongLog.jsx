@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 const STATUS_LABEL = {
   pending_review: { text: '待确认', bg: '#FEF9C3', color: '#854D0E' },
@@ -7,6 +8,7 @@ const STATUS_LABEL = {
 }
 
 export default function WrongLog() {
+  const navigate = useNavigate()
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -22,7 +24,12 @@ export default function WrongLog() {
 
   return (
     <div style={{ paddingTop: 24 }}>
-      <h2>❌ 错题本</h2>
+      <h2>❌ 错题本 <button
+        onClick={() => navigate('/quiz')}
+        style={{ marginLeft: 12, padding: '4px 12px', background: '#3B82F6', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}
+      >
+        ✏️ 重新开始测试
+      </button></h2>
       <p style={{ color: '#666' }}>记录所有做错的题目，答对 3 次后移出</p>
 
       {loading ? (
