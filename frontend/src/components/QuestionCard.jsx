@@ -38,10 +38,10 @@ export default function QuestionCard({ question, onSubmit, submitting, readonly 
               alignItems: 'center',
               gap: 12,
               padding: '10px 14px',
-              border: `2px solid ${selected === k ? '#3B82F6' : '#e5e7eb'}`,
+              border: `2px solid ${selected === k && !readonly ? '#3B82F6' : '#e5e7eb'}`,
               borderRadius: 8,
-              cursor: 'pointer',
-              background: selected === k ? '#EFF6FF' : '#fff',
+              cursor: readonly ? 'default' : 'pointer',
+              background: selected === k && !readonly ? '#EFF6FF' : '#fff',
             }}
           >
             <input
