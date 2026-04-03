@@ -14,6 +14,7 @@ with engine.connect() as conn:
     from sqlalchemy import text
     for col_def in [
         "ALTER TABLE questions ADD COLUMN explanation TEXT",
+        "ALTER TABLE wrong_questions ADD COLUMN wrong_answer VARCHAR(1)",
     ]:
         try:
             conn.execute(text(col_def))

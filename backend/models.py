@@ -45,6 +45,7 @@ class WrongQuestion(Base):
     question_id = Column(Integer, ForeignKey("questions.id"), nullable=False)
     user_id = Column(Integer, nullable=True)              # nullable for single-user
     wrong_count = Column(Integer, default=1)
+    wrong_answer = Column(String(1), nullable=True)        # the answer the user selected incorrectly
     consecutive_correct = Column(Integer, default=0)     # reaches 3 -> "mastered"
     last_wrong_at = Column(DateTime, default=datetime.utcnow)
     status = Column(String(20), default="pending_review")  # pending_review | confirmed | mastered

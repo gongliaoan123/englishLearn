@@ -27,7 +27,7 @@ def get_analysis(wrong_question_id: int, db: Session = Depends(get_db)):
     if not analysis:
         # Auto-generate on first access
         q = wq.question
-        result = analyze_wrong_answer(q.content, q.answer, q.answer, q.options)
+        result = analyze_wrong_answer(q.content, q.answer, wq.wrong_answer or q.answer, q.options)
         analysis = AIAnalysis(
             wrong_question_id=wq.id,
             analysis=result["analysis"],

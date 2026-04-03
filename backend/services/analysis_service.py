@@ -28,8 +28,14 @@ Student chose: {wrong_answer}
 Correct answer: {correct_answer}
 
 Analyze the student's mistake."""
-    ai = AIClient()
-    response = ai.chat(ANALYSIS_SYSTEM, prompt)
-    response = re.sub(r"^```json\s*", "", response.strip())
-    response = re.sub(r"\s*```$", "", response.strip())
-    return json.loads(response)
+    try:
+        ai = AIClient()
+        response = ai.chat(ANALYSIS_SYSTEM, prompt)
+        response = re.sub(r"^```json\s*", "", response.strip(), flags=re.IGNORECASE)
+        response = re.sub(r"\s*```$", "", response.strip())
+        result = json.loads(response)
+        if isinstance(result, dict) and "analysis" in result:
+            return result
+        return {"analysis": "解析生成失败", "suggested_tags": []}
+    except (json.JSONDecodeError, Exception):
+        return {"analysis": "解析生成失败，请稍后重试", "suggested_tags": []}

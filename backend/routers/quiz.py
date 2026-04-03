@@ -42,6 +42,7 @@ def next_question(session_id: str, current: int = 1, db: Session = Depends(get_d
         question_id=q.id,
         content=q.content,
         options=q.options,
+        explanation=q.explanation,
         current=current,
         total=SESSION_SIZE,
     )
@@ -56,7 +57,8 @@ def submit_answer(body: QuizAnswerRequest, db: Session = Depends(get_db)):
     correct = body.selected_answer.strip().upper() == q.answer.strip().upper()
     if correct:
         record_correct(body.session_id)
-    wq = record_answer(db, body.question_id, correct)
+    wrong_ans = None if correct else body.selected_answer.strip().upper()
+    wq = record_answer(db, body.question_id, correct, wrong_answer=wrong_ans)
     db.commit()
 
     used_ids = get_used_ids(body.session_id)
