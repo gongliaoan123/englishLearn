@@ -15,7 +15,6 @@ function clearSession() {
   try { localStorage.removeItem(LS_KEY) } catch {}
 }
 
-// 详解 / AI分析 折叠面板
 function ExplanationPanel({ explanation, analysis, tags, isWrong, loading }) {
   const [expanded, setExpanded] = useState(true)
   return (
@@ -67,70 +66,68 @@ function ExplanationPanel({ explanation, analysis, tags, isWrong, loading }) {
 export default function QuizSession() {
   const navigate = useNavigate()
   const [sessionId, setSessionId] = useState(null)
-  // questions: array of { question_id, content, options, explanation, answer, selectedAnswer, isCorrect }
+  // questions[i]: { question_id, content, options, explanation, answer, selectedAnswer, isCorrect, wrongQuestionId, analysisResult }
   const [questions, setQuestions] = useState([])
-  // answerState: 'idle' | 'correct' | 'wrong'
-  const [answerState, setAnswerState] = useState('idle')
+  // 当前在数组中的索引
+  const [currentIdx, setCurrentIdx] = useState(0)
   const [submitting, setSubmitting] = useState(false)
-  // 当前显示的分析（从 /api/analysis/{id} 加载）
-  const [analysisResult, setAnalysisResult] = useState(null)
-  const [analysisLoading, setAnalysisLoading] = useState(false)
-  const [wrongQuestionId, setWrongQuestionId] = useState(null)
   const TOTAL = 10
 
-  // 挂载时恢复 localStorage 中的 session
+  const current = questions[currentIdx]
+  const isAtLast = currentIdx === questions.length - 1
+  const currentPos = currentIdx + 1  // 1-indexed display
+
+  // 挂载时恢复 session
   useEffect(() => {
     const saved = loadSession()
     if (saved?.sessionId) {
       setSessionId(saved.sessionId)
       setQuestions(saved.questions || [])
-      setAnswerState(saved.answerState || 'idle')
-      setAnalysisResult(saved.analysisResult || null)
-      setWrongQuestionId(saved.wrongQuestionId || null)
+      setCurrentIdx(Math.min(saved.currentIdx || 0, (saved.questions?.length || 1) - 1))
     }
   }, [])
 
   // 每次状态变化同步到 localStorage
   useEffect(() => {
     if (sessionId) {
-      saveSession({ sessionId, questions, answerState, analysisResult, wrongQuestionId })
+      saveSession({ sessionId, questions, currentIdx })
     }
-  }, [sessionId, questions, answerState, analysisResult, wrongQuestionId])
-
-  // 当前题目（最后一个）
-  const current = questions[questions.length - 1]
-  const currentPos = questions.length  // 1-indexed
+  }, [sessionId, questions, currentIdx])
 
   // 启动全新测试
   const startQuiz = async () => {
     const res = await api.startQuiz()
     setSessionId(res.session_id)
     setQuestions([])
-    setAnswerState('idle')
-    setAnalysisResult(null)
-    setWrongQuestionId(null)
-    await _fetchNext(res.session_id, 1)
+    setCurrentIdx(0)
+    const q = await api.nextQuestion(res.session_id, 1)
+    setQuestions([{ ...q, selectedAnswer: null, isCorrect: null, wrongQuestionId: null, analysisResult: null }])
   }
 
-  // 获取下一题（内部用，不读 state）
-  const _fetchNext = async (sid, pos) => {
+  // 添加新题（始终加到末尾并跳转）
+  const addNextQuestion = useCallback(async () => {
+    if (!sessionId) return
     setSubmitting(true)
-    setAnswerState('idle')
-    setAnalysisResult(null)
-    setWrongQuestionId(null)
     try {
-      const q = await api.nextQuestion(sid, pos)
-      setQuestions(prev => [...prev, { ...q, selectedAnswer: null, isCorrect: null }])
+      const pos = questions.length + 1
+      const q = await api.nextQuestion(sessionId, pos)
+      setQuestions(prev => {
+        const next = [...prev, { ...q, selectedAnswer: null, isCorrect: null, wrongQuestionId: null, analysisResult: null }]
+        // 同步设置 idx，useEffect 下次 render 前 idx 已经更新
+        setCurrentIdx(next.length - 1)
+        return next
+      })
     } catch (err) {
       alert(err.message)
     } finally {
       setSubmitting(false)
     }
-  }
+  }, [sessionId, questions.length])
 
   // 提交答案
   const handleSubmit = useCallback(async (selected) => {
-    if (!current || answerState !== 'idle' || submitting) return
+    if (!current || !isAtLast || submitting) return
+    if (current.isCorrect !== null) return  // 已答过
     setSubmitting(true)
     try {
       const res = await api.submitAnswer({
@@ -139,10 +136,15 @@ export default function QuizSession() {
         selected_answer: selected,
       })
 
-      // 更新本题的答题结果
       setQuestions(prev => {
         const updated = [...prev]
-        updated[updated.length - 1] = { ...updated[updated.length - 1], selectedAnswer: selected, isCorrect: res.correct }
+        updated[currentIdx] = {
+          ...updated[currentIdx],
+          selectedAnswer: selected,
+          isCorrect: res.correct,
+          wrongQuestionId: res.wrong_question_id || null,
+          analysisResult: null,
+        }
         return updated
       })
 
@@ -152,19 +154,26 @@ export default function QuizSession() {
         return
       }
 
-      if (res.correct) {
-        setAnswerState('correct')
-      } else {
-        setAnswerState('wrong')
-        setWrongQuestionId(res.wrong_question_id)
-        setAnalysisLoading(true)
+      if (!res.correct) {
+        // 异步加载 AI 分析
+        setQuestions(prev => {
+          const updated = [...prev]
+          updated[currentIdx] = { ...updated[currentIdx], isCorrect: false, wrongQuestionId: res.wrong_question_id }
+          return updated
+        })
         try {
           const a = await api.getAnalysis(res.wrong_question_id)
-          setAnalysisResult(a)
+          setQuestions(prev => {
+            const updated = [...prev]
+            updated[currentIdx] = { ...updated[currentIdx], analysisResult: a }
+            return updated
+          })
         } catch {
-          setAnalysisResult({ analysis: '解析生成失败', suggested_tags: [] })
-        } finally {
-          setAnalysisLoading(false)
+          setQuestions(prev => {
+            const updated = [...prev]
+            updated[currentIdx] = { ...updated[currentIdx], analysisResult: { analysis: '解析生成失败', suggested_tags: [] } }
+            return updated
+          })
         }
       }
     } catch (err) {
@@ -172,20 +181,20 @@ export default function QuizSession() {
     } finally {
       setSubmitting(false)
     }
-  }, [current, sessionId, answerState, submitting, navigate])
+  }, [current, isAtLast, sessionId, currentIdx, submitting, navigate])
 
-  // 确认分析 → 下一题
+  // 确认分析 → 添加下一题
   const handleConfirm = async () => {
-    if (!wrongQuestionId) return
+    if (!current?.wrongQuestionId) return
     setSubmitting(true)
     try {
-      const tags = analysisResult?.suggested_tags || []
-      await api.confirmAnalysis(wrongQuestionId, tags)
+      const tags = current.analysisResult?.suggested_tags || []
+      await api.confirmAnalysis(current.wrongQuestionId, tags)
       if (questions.length >= TOTAL) {
         clearSession()
         navigate('/wrong-log')
       } else {
-        await _fetchNext(sessionId, questions.length + 1)
+        addNextQuestion()
       }
     } catch (err) {
       alert('操作失败：' + err.message)
@@ -194,17 +203,17 @@ export default function QuizSession() {
     }
   }
 
-  // 跳过分析 → 下一题
+  // 跳过分析 → 添加下一题
   const handleSkip = async () => {
-    if (!wrongQuestionId) return
+    if (!current?.wrongQuestionId) return
     setSubmitting(true)
     try {
-      await api.rejectAnalysis(wrongQuestionId)
+      await api.rejectAnalysis(current.wrongQuestionId)
       if (questions.length >= TOTAL) {
         clearSession()
         navigate('/wrong-log')
       } else {
-        await _fetchNext(sessionId, questions.length + 1)
+        addNextQuestion()
       }
     } catch (err) {
       alert('操作失败：' + err.message)
@@ -215,18 +224,15 @@ export default function QuizSession() {
 
   // 上一题
   const handlePrev = () => {
-    if (questions.length <= 1) return
-    const removed = questions[questions.length - 1]
-    setQuestions(prev => prev.slice(0, -1))
-    // 恢复上一题的答题状态
-    if (removed.isCorrect === false) {
-      setAnswerState('wrong')
-      setWrongQuestionId(null)  // 简化：忽略 wq_id
-      setAnalysisResult(null)
-    } else if (removed.isCorrect === true) {
-      setAnswerState('correct')
-    } else {
-      setAnswerState('idle')
+    if (currentIdx > 0) {
+      setCurrentIdx(i => i - 1)
+    }
+  }
+
+  // 下一题（仅当处于最后一题且未答完时可用）
+  const handleNext = () => {
+    if (currentIdx < questions.length - 1) {
+      setCurrentIdx(i => i + 1)
     }
   }
 
@@ -247,9 +253,14 @@ export default function QuizSession() {
     )
   }
 
-  if (submitting && !current) {
+  if (!current) {
     return <p style={{ paddingTop: 40, textAlign: 'center' }}>加载中...</p>
   }
+
+  const isAnswered = current.isCorrect !== null
+  const isCorrect = current.isCorrect === true
+  const isWrong = current.isCorrect === false
+  const canSubmit = isAtLast && !isAnswered && !submitting
 
   return (
     <div style={{ paddingTop: 24 }}>
@@ -261,71 +272,71 @@ export default function QuizSession() {
       <div style={{ background: '#E5E7EB', height: 6, borderRadius: 3, marginTop: 8 }}>
         <div style={{ background: '#3B82F6', height: '100%', borderRadius: 3, width: `${(Math.min(currentPos, TOTAL) / TOTAL) * 100}%`, transition: 'width 0.3s' }} />
       </div>
-      <div style={{ marginTop: 10, fontSize: 13, color: '#666' }}>第 {currentPos} 题</div>
+      <div style={{ marginTop: 10, fontSize: 13, color: '#666' }}>
+        第 {currentPos} 题
+        {questions.length > 1 && `（共 ${questions.length} 题，已答 ${questions.filter(q => q.isCorrect !== null).length} 题）`}
+      </div>
 
-      {/* 题目卡片 */}
+      {/* 题目卡片（仅最后一题可提交） */}
       <QuestionCard
         question={current}
         onSubmit={handleSubmit}
         submitting={submitting}
-        disabled={answerState !== 'idle'}
+        disabled={!canSubmit}
       />
 
       {/* 答对 */}
-      {answerState === 'correct' && (
+      {isCorrect && (
         <>
           <div style={{ marginTop: 14, padding: 14, background: '#DCFCE7', borderRadius: 8, color: '#166534' }}>
             ✅ 正确！正确答案：{current.answer}
           </div>
           {current.explanation && (
-            <ExplanationPanel explanation={current.explanation} isWrong={false} loading={false} />
+            <ExplanationPanel explanation={current.explanation} isWrong={false} loading={false} analysis={null} tags={null} />
           )}
           <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-            {questions.length > 1 && (
+            {currentIdx > 0 && (
               <button onClick={handlePrev} style={{ padding: '9px 18px', background: '#fff', border: '1px solid #ccc', borderRadius: 8, cursor: 'pointer' }}>
                 ← 上一题
               </button>
             )}
-            <button
-              onClick={() => {
-                if (currentPos >= TOTAL) {
-                  clearSession()
-                  navigate('/wrong-log')
-                } else {
-                  _fetchNext(sessionId, currentPos + 1)
-                }
-              }}
-              style={{ flex: 1, padding: '10px 0', background: '#3B82F6', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 15 }}
-            >
-              {currentPos >= TOTAL ? '查看结果' : '下一题 →'}
-            </button>
+            {currentIdx < questions.length - 1 ? (
+              <button onClick={handleNext} style={{ flex: 1, padding: '10px 0', background: '#3B82F6', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 15 }}>
+                下一题 →
+              </button>
+            ) : questions.length < TOTAL ? (
+              <button onClick={addNextQuestion} style={{ flex: 1, padding: '10px 0', background: '#3B82F6', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 15 }}>
+                下一题 →
+              </button>
+            ) : (
+              <button onClick={() => { clearSession(); navigate('/wrong-log') }} style={{ flex: 1, padding: '10px 0', background: '#3B82F6', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 15 }}>
+                查看结果
+              </button>
+            )}
           </div>
         </>
       )}
 
       {/* 答错 */}
-      {answerState === 'wrong' && (
+      {isWrong && (
         <>
           <div style={{ marginTop: 14, padding: 14, background: '#FEE2E2', borderRadius: 8, color: '#991B1B' }}>
             ❌ 错误！你选了 {current.selectedAnswer}，正确答案：{current.answer}
           </div>
           <ExplanationPanel
             explanation={current.explanation}
-            analysis={analysisResult?.analysis}
-            tags={analysisResult?.suggested_tags}
+            analysis={current.analysisResult?.analysis}
+            tags={current.analysisResult?.suggested_tags}
             isWrong={true}
-            loading={analysisLoading}
+            loading={!current.analysisResult && submitting}
           />
           <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-            {questions.length > 1 && (
+            {currentIdx > 0 && (
               <button onClick={handlePrev} style={{ padding: '9px 18px', background: '#fff', border: '1px solid #ccc', borderRadius: 8, cursor: 'pointer' }}>
                 ← 上一题
               </button>
             )}
-            <button
-              onClick={handleSkip}
-              style={{ padding: '10px 14px', background: '#fff', border: '1px solid #ccc', borderRadius: 8, cursor: 'pointer' }}
-            >
+            <button onClick={handleSkip} style={{ padding: '10px 14px', background: '#fff', border: '1px solid #ccc', borderRadius: 8, cursor: 'pointer' }}>
               跳过
             </button>
             <button
@@ -337,6 +348,20 @@ export default function QuizSession() {
             </button>
           </div>
         </>
+      )}
+
+      {/* 未答且非最后一题 */}
+      {!isAnswered && !isAtLast && (
+        <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+          {currentIdx > 0 && (
+            <button onClick={handlePrev} style={{ padding: '9px 18px', background: '#fff', border: '1px solid #ccc', borderRadius: 8, cursor: 'pointer' }}>
+              ← 上一题
+            </button>
+          )}
+          <button onClick={handleNext} style={{ flex: 1, padding: '10px 0', background: '#3B82F6', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 15 }}>
+            下一题 →
+          </button>
+        </div>
       )}
 
       <div style={{ height: 40 }} />
