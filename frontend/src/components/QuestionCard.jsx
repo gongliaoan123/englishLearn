@@ -64,11 +64,11 @@ export default function QuestionCard({ question, onSubmit, submitting, readonly 
         style={{
           marginTop: 20,
           padding: '10px 32px',
-          background: selected && !submitting ? '#3B82F6' : '#ccc',
-          color: '#fff',
+          background: readonly ? '#e5e7eb' : selected && !submitting ? '#3B82F6' : '#ccc',
+          color: readonly ? '#9ca3af' : '#fff',
           border: 'none',
           borderRadius: 8,
-          cursor: selected && !submitting ? 'pointer' : 'not-allowed',
+          cursor: 'not-allowed',
           fontSize: 15,
         }}
       >
