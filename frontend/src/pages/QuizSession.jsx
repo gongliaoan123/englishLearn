@@ -140,7 +140,7 @@ export default function QuizSession() {
         question={current}
         onSubmit={handleSubmit}
         submitting={submitting}
-        disabled={answerState !== 'idle'}
+        readonly={current.isCorrect !== null}
       />
 
       {/* 答对 */}

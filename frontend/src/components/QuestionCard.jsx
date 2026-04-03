@@ -17,7 +17,7 @@ function DialogueContent({ content }) {
   )
 }
 
-export default function QuestionCard({ question, onSubmit, submitting }) {
+export default function QuestionCard({ question, onSubmit, submitting, readonly }) {
   const [selected, setSelected] = useState(question.selectedAnswer ?? null)
 
   function handleSubmit() {
@@ -49,8 +49,8 @@ export default function QuestionCard({ question, onSubmit, submitting }) {
               name="option"
               value={k}
               checked={selected === k}
-              onChange={() => setSelected(k)}
-              disabled={submitting}
+              onChange={() => !readonly && setSelected(k)}
+              disabled={readonly || submitting}
             />
             <span style={{ fontWeight: 600 }}>{k}.</span>
             <span>{v}</span>
@@ -60,7 +60,7 @@ export default function QuestionCard({ question, onSubmit, submitting }) {
 
       <button
         onClick={handleSubmit}
-        disabled={!selected || submitting}
+        disabled={!selected || submitting || readonly}
         style={{
           marginTop: 20,
           padding: '10px 32px',
