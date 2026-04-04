@@ -5,6 +5,7 @@ import Upload from './pages/Upload'
 import QuestionBank from './pages/QuestionBank'
 import QuizSession from './pages/QuizSession'
 import WrongLog from './pages/WrongLog'
+import Result from './pages/Result'
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
             <Route path="/questions" element={<QuestionBank />} />
             <Route path="/quiz" element={<QuizSession />} />
             <Route path="/wrong-log" element={<WrongLog />} />
+            <Route path="/result" element={<Result />} />
           </Routes>
         </div>
       </QuizProvider>

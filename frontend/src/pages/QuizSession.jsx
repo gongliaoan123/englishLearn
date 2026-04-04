@@ -88,8 +88,12 @@ export default function QuizSession() {
 
   const handleSubmit = useCallback(async (selected) => {
     const res = await submitAnswer(selected)
-    if (res?.is_session_over) navigate('/wrong-log')
-  }, [submitAnswer, navigate])
+    if (res?.is_session_over) {
+      navigate('/result', {
+        state: { questions, correctCount: res.correct_count, total: TOTAL },
+      })
+    }
+  }, [submitAnswer, navigate, questions, TOTAL])
 
   if (!sessionId) {
     return (
@@ -225,7 +229,7 @@ export default function QuizSession() {
         {/* 最后一题且已答 → 查看结果 */}
         {isAllDone && (
           <button
-            onClick={() => navigate('/wrong-log')}
+            onClick={() => navigate('/result', { state: { questions, total: TOTAL } })}
             style={{ ...btn, background: '#6B7280', color: '#fff', border: 'none', flexShrink: 0 }}
           >
             查看结果
