@@ -25,6 +25,12 @@ export const api = {
     request('POST', '/questions/import', file),
   listQuestions: (page = 1) =>
     request('GET', `/questions?page=${page}`),
+  createQuestion: (body) =>
+    request('POST', '/questions', body),
+  updateQuestion: (id, body) =>
+    request('PUT', `/questions/${id}`, body),
+  deleteQuestion: (id) =>
+    request('DELETE', `/questions/${id}`),
   clearQuestions: () =>
     request('DELETE', '/questions'),
 

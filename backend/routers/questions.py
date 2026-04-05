@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from database import SessionLocal
 from models import Question, Tag, QuestionTag, WrongQuestion, AIAnalysis
-from schemas import QuestionImportResponse, QuestionListResponse, QuestionResponse
+from schemas import QuestionImportResponse, QuestionListResponse, QuestionResponse, QuestionCreate, QuestionUpdate
 from services.docx_parser import extract_text_from_docx, parse_docx_stream as parse_docx_via_ai
 from services.tag_service import get_or_create_tags
 
@@ -88,6 +88,74 @@ def list_questions(db: Session = Depends(get_db), page: int = 1, page_size: int 
             for q in questions
         ],
         total=total,
+    )
+
+
+@router.delete("/{question_id}")
+def delete_question(question_id: int, db: Session = Depends(get_db)):
+    q = db.query(Question).filter(Question.id == question_id).first()
+    if not q:
+        raise Exception("题目不存在")
+    db.query(QuestionTag).filter(QuestionTag.question_id == question_id).delete()
+    db.query(AIAnalysis).filter(AIAnalysis.question_id == question_id).delete()
+    db.query(WrongQuestion).filter(WrongQuestion.question_id == question_id).delete()
+    db.delete(q)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("", response_model=QuestionResponse)
+def create_question(body: QuestionCreate, db: Session = Depends(get_db)):
+    q = Question(
+        content=body.content,
+        options=body.options,
+        answer=body.answer,
+        explanation=body.explanation,
+        source="manual",
+    )
+    db.add(q)
+    db.flush()
+    get_or_create_tags(db, q, body.tags)
+    db.commit()
+    db.refresh(q)
+    return QuestionResponse(
+        id=q.id,
+        content=q.content,
+        options=q.options,
+        answer=q.answer,
+        explanation=q.explanation,
+        docx_filename=q.docx_filename,
+        tags=[t.name for t in q.tags],
+        source=q.source,
+    )
+
+
+@router.put("/{question_id}", response_model=QuestionResponse)
+def update_question(question_id: int, body: QuestionUpdate, db: Session = Depends(get_db)):
+    q = db.query(Question).filter(Question.id == question_id).first()
+    if not q:
+        raise Exception("题目不存在")
+    if body.content is not None:
+        q.content = body.content
+    if body.options is not None:
+        q.options = body.options
+    if body.answer is not None:
+        q.answer = body.answer
+    if body.explanation is not None:
+        q.explanation = body.explanation
+    if body.tags is not None:
+        get_or_create_tags(db, q, body.tags)
+    db.commit()
+    db.refresh(q)
+    return QuestionResponse(
+        id=q.id,
+        content=q.content,
+        options=q.options,
+        answer=q.answer,
+        explanation=q.explanation,
+        docx_filename=q.docx_filename,
+        tags=[t.name for t in q.tags],
+        source=q.source,
     )
 
 

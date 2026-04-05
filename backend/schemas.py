@@ -27,6 +27,22 @@ class QuestionListResponse(BaseModel):
     total: int
 
 
+class QuestionCreate(BaseModel):
+    content: str
+    options: dict       # {"A": "...", "B": "...", "C": "...", "D": "..."}
+    answer: str         # "A" | "B" | "C" | "D"
+    explanation: str | None = None
+    tags: list[str] = []
+
+
+class QuestionUpdate(BaseModel):
+    content: str | None = None
+    options: dict | None = None
+    answer: str | None = None
+    explanation: str | None = None
+    tags: list[str] | None = None
+
+
 # --- Quiz schemas ---
 
 class QuizStartResponse(BaseModel):
