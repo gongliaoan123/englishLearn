@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuiz } from '../contexts/QuizContext'
 import QuestionCard from '../components/QuestionCard'
@@ -8,6 +8,9 @@ function StartScreen({ startQuiz, TOTAL }) {
   const [tags, setTags] = useState([])
   const [selected, setSelected] = useState(new Set())
   const [loading, setLoading] = useState(true)
+  const [tagDropdownOpen, setTagDropdownOpen] = useState(false)
+  const [tagSearch, setTagSearch] = useState('')
+  const tagDropdownRef = useRef(null)
 
   useEffect(() => {
     api.listTags().then(res => {
@@ -16,13 +19,18 @@ function StartScreen({ startQuiz, TOTAL }) {
     }).catch(() => setLoading(false))
   }, [])
 
-  function toggle(tag) {
-    setSelected(prev => {
-      const s = new Set(prev)
-      s.has(tag) ? s.delete(tag) : s.add(tag)
-      return s
-    })
-  }
+  // 点击外部关闭下拉
+  useEffect(() => {
+    if (!tagDropdownOpen) return
+    function handleClick(e) {
+      if (tagDropdownRef.current && !tagDropdownRef.current.contains(e.target)) {
+        setTagDropdownOpen(false)
+        setTagSearch('')
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [tagDropdownOpen])
 
   function handleStart() {
     startQuiz([...selected])
@@ -34,29 +42,61 @@ function StartScreen({ startQuiz, TOTAL }) {
       <p style={{ color: '#666' }}>每次 {TOTAL} 道选择题</p>
 
       {!loading && tags.length > 0 && (
-        <div style={{ maxWidth: 500, margin: '20px auto 0', textAlign: 'left' }}>
-          <div style={{ fontSize: 13, color: '#666', marginBottom: 10, textAlign: 'center' }}>
-            可按标签筛选题目（可选）
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
-            {tags.map(t => (
-              <button
-                key={t.id}
-                onClick={() => toggle(t.name)}
-                style={{
-                  padding: '4px 14px', borderRadius: 20, fontSize: 13, cursor: 'pointer',
-                  background: selected.has(t.name) ? '#3B82F6' : '#fff',
-                  color: selected.has(t.name) ? '#fff' : '#374151',
-                  border: selected.has(t.name) ? 'none' : '1px solid #D1D5DB',
-                }}
-              >
-                #{t.name}
-              </button>
-            ))}
+        <div style={{ maxWidth: 500, margin: '20px auto 0', display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
+          {/* 已选标签 chips */}
+          {selected.size > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center' }}>
+              {[...selected].map(tag => (
+                <span key={tag} style={{ background: '#3B82F6', color: '#fff', padding: '3px 8px', borderRadius: 16, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  {tag}
+                  <button onClick={() => setSelected(prev => { const s = new Set(prev); s.delete(tag); return s })}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#BFDBFE', fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
+                </span>
+              ))}
+              <button onClick={() => setSelected(new Set())}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 12 }}>清除</button>
+            </div>
+          )}
+          {/* 下拉选择器 */}
+          <div style={{ position: 'relative' }} ref={tagDropdownRef}>
+            <button onClick={() => setTagDropdownOpen(v => !v)}
+              style={{ padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer',
+                background: selected.size > 0 ? '#EFF6FF' : '#fff',
+                color: selected.size > 0 ? '#1D4ED8' : '#374151',
+                border: selected.size > 0 ? '1px solid #BFDBFE' : '1px solid #D1D5DB' }}>
+              🏷️ 按标签筛选 {selected.size > 0 ? `(${selected.size})` : ''} ▾
+            </button>
+            {tagDropdownOpen && (
+              <div style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
+                marginTop: 4, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 50,
+                minWidth: 220, maxHeight: 280, overflowY: 'auto', padding: '8px 0', textAlign: 'left' }}>
+                <div style={{ padding: '4px 12px 8px', borderBottom: '1px solid #F3F4F6' }}>
+                  <input value={tagSearch} onChange={e => setTagSearch(e.target.value)}
+                    placeholder="搜索标签..." autoFocus
+                    style={{ width: '100%', border: 'none', outline: 'none', fontSize: 13, padding: '2px 0', boxSizing: 'border-box' }} />
+                </div>
+                {[...selected].map(tag => (
+                  <div key={tag} onClick={() => setSelected(prev => { const s = new Set(prev); s.delete(tag); return s })}
+                    style={{ padding: '7px 12px', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, color: '#1D4ED8', background: '#EFF6FF' }}>
+                    <span style={{ color: '#3B82F6', fontWeight: 700, width: 16 }}>✓</span> {tag}
+                  </div>
+                ))}
+                {[...tags].filter(t => !selected.has(t.name) && t.name.includes(tagSearch)).map(t => (
+                  <div key={t.id} onClick={() => setSelected(prev => new Set([...prev, t.name]))}
+                    style={{ padding: '7px 12px', fontSize: 13, cursor: 'pointer', color: '#374151' }}>
+                    {t.name}
+                  </div>
+                ))}
+                {[...tags].filter(t => !selected.has(t.name) && !t.name.includes(tagSearch)).length > 0 && tagSearch && (
+                  <div style={{ padding: '6px 12px', fontSize: 12, color: '#9CA3AF' }}>无匹配结果</div>
+                )}
+              </div>
+            )}
           </div>
           {selected.size > 0 && (
-            <p style={{ textAlign: 'center', fontSize: 13, color: '#3B82F6', marginTop: 10 }}>
-              已选 {selected.size} 个标签，仅从这些标签出题
+            <p style={{ fontSize: 13, color: '#3B82F6' }}>
+              仅从选中的 {selected.size} 个标签出题
             </p>
           )}
         </div>

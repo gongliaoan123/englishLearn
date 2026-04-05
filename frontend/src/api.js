@@ -23,8 +23,8 @@ export const api = {
   // Questions
   importDocx: (file) =>
     request('POST', '/questions/import', file),
-  listQuestions: (page = 1) =>
-    request('GET', `/questions?page=${page}`),
+  listQuestions: (page = 1, tag = null) =>
+    request('GET', `/questions?page=${page}${tag ? `&tag=${encodeURIComponent(tag)}` : ''}`),
   createQuestion: (body) =>
     request('POST', '/questions', body),
   updateQuestion: (id, body) =>

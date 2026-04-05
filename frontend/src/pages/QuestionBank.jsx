@@ -4,21 +4,24 @@ import { api } from '../api'
 const TOTAL_PAGES = (total) => Math.max(1, Math.ceil(total / 50))
 
 // 标签自动补全输入框
+// 去除首字符 #（容错，防止数据中已有前缀）
+function cleanTag(tag) {
+  return tag.startsWith('#') ? tag.slice(1) : tag
+}
+
 function TagInput({ value, onChange }) {
-  const [input, setInput] = useState('')
+  const [liveInput, setLiveInput] = useState('')
   const [suggestions, setSuggestions] = useState([])
   const [show, setShow] = useState(false)
   const [highlighted, setHighlighted] = useState(-1)
   const timerRef = useRef(null)
   const ref = useRef(null)
-
-  useEffect(() => {
-    setInput(value.join('，'))
-  }, [value])
+  // 用 ref 追踪 IME composition 状态，避免闭包问题
+  const isComposingRef = useRef(false)
 
   function handleChange(e) {
     const v = e.target.value
-    setInput(v)
+    setLiveInput(v)
     clearTimeout(timerRef.current)
     timerRef.current = setTimeout(async () => {
       const last = v.split(/[,，]/).pop().trim()
@@ -30,52 +33,86 @@ function TagInput({ value, onChange }) {
     }, 200)
   }
 
+  // IME composition 开始
+  function handleCompositionStart(e) {
+    isComposingRef.current = true
+  }
+
+  // IME composition 结束：此时 text 已确定，可以安全提交
+  function handleCompositionEnd(e) {
+    isComposingRef.current = false
+    const text = e.data || liveInput
+    if (!text.trim()) return
+    const current = text.split(/[,，]/).pop().trim()
+    if (!current) return
+    const matched = suggestions.find(s => s.name === current)
+    commit(matched ? matched.name : current)
+  }
+
   function handleKeyDown(e) {
+    if (isComposingRef.current) return  // IME 未结束时忽略
+    if (e.key === 'Enter' || e.key === ',' || e.key === '，') {
+      e.preventDefault()
+      const current = liveInput.split(/[,，]/).pop().trim()
+      if (!current) return
+      const matched = suggestions.find(s => s.name === current)
+      commit(matched ? matched.name : current)
+      return
+    }
+    // 退格键：输入框为空时删除最后一个标签
+    if (e.key === 'Backspace' && liveInput === '' && cleanValue.length > 0) {
+      const last = cleanValue[cleanValue.length - 1]
+      removeTag(last)
+      return
+    }
     if (!show || suggestions.length === 0) return
     if (e.key === 'ArrowDown') { e.preventDefault(); setHighlighted(i => Math.min(i + 1, suggestions.length - 1)); return }
     if (e.key === 'ArrowUp') { e.preventDefault(); setHighlighted(i => Math.max(i - 1, -1)); return }
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      const tag = highlighted >= 0 ? suggestions[highlighted].name : suggestions[0].name
-      commit(tag)
-      return
-    }
     if (e.key === 'Tab') {
       if (suggestions[0]) { e.preventDefault(); commit(suggestions[0].name) }
     }
   }
 
   function commit(tag) {
-    if (tag && !value.includes(tag)) {
-      const parts = input.split(/[,，]/)
-      parts.pop()
-      onChange([...value, ...parts.map(t => t.trim()).filter(Boolean), tag])
-    }
-    setInput(value.join('，'))
+    const clean = cleanTag(tag)
+    const parts = liveInput.split(/[,，]/)
+    parts.pop()
+    const pending = parts.map(t => cleanTag(t)).filter(Boolean)
+    const existingClean = value.map(cleanTag)
+    const all = [...existingClean, ...pending, clean]
+    const seen = new Set()
+    const next = all.filter(t => t && !seen.has(t) && (seen.add(t), true))
+    onChange(next)
+    setLiveInput('')
     setSuggestions([])
     setShow(false)
     setHighlighted(-1)
   }
 
   function removeTag(tag) {
-    onChange(value.filter(t => t !== tag))
-    setInput(value.filter(t => t !== tag).join('，'))
+    const clean = cleanTag(tag)
+    const next = value.filter(t => cleanTag(t) !== clean)
+    onChange(next)
   }
+
+  const cleanValue = value.map(cleanTag)
 
   return (
     <div style={{ position: 'relative' }} ref={ref}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '4px 8px', border: '1px solid #D1D5DB', borderRadius: 6, minHeight: 36, alignItems: 'center', background: '#fff' }}>
-        {value.map(tag => (
+        {cleanValue.map(tag => (
           <span key={tag} style={{ background: '#EDE9FE', color: '#5B21B6', padding: '2px 6px', borderRadius: 12, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
             #{tag}
             <button onClick={() => removeTag(tag)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7C3AED', fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
           </span>
         ))}
         <input
-          value={input}
+          value={liveInput}
           onChange={handleChange}
+          onCompositionStart={handleCompositionStart}
+          onCompositionEnd={handleCompositionEnd}
           onKeyDown={handleKeyDown}
-          onFocus={() => input && setShow(true)}
+          onFocus={() => liveInput && setShow(true)}
           onBlur={() => setTimeout(() => setShow(false), 150)}
           placeholder={value.length === 0 ? '输入标签，回车确认' : ''}
           style={{ flex: 1, minWidth: 80, border: 'none', outline: 'none', fontSize: 14, padding: '2px 0', background: 'transparent' }}
@@ -170,18 +207,31 @@ function QuestionForm({ editing, initial, onSave, onCancel }) {
             placeholder="输入题目内容，支持多行"
           />
 
-          <label style={labelStyle}>选项 *</label>
+          <label style={labelStyle}>选项 *（点击选项行将其设为正确答案）</label>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
-            {[['A', A, setA], ['B', B, setB], ['C', C, setC], ['D', D, setD]].map(([k, val, setter]) => (
-              <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontWeight: 600, color: '#374151', width: 16 }}>{k}.</span>
-                <input value={val} onChange={e => setter(e.target.value)}
-                  style={{ flex: 1, ...inputStyle }} placeholder={`选项${k}`} />
-                <input type="radio" name="answer" value={k} checked={answer === k}
-                  onChange={() => setAnswer(k)} title="设为正确答案"
-                  style={{ cursor: 'pointer', width: 16, height: 16 }} />
-              </div>
-            ))}
+            {[['A', A, setA], ['B', B, setB], ['C', C, setC], ['D', D, setD]].map(([k, val, setter]) => {
+              const isCorrect = answer === k
+              return (
+                <div key={k} onClick={() => setAnswer(k)} title="点击设为正确答案"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
+                    padding: '6px 10px', borderRadius: 8,
+                    background: isCorrect ? '#DCFCE7' : '#fff',
+                    border: isCorrect ? '1.5px solid #22C55E' : '1.5px solid #E5E7EB',
+                    boxSizing: 'border-box',
+                  }}>
+                  <span style={{
+                    fontWeight: 700, fontSize: 13, minWidth: 20,
+                    color: isCorrect ? '#16A34A' : '#9CA3AF',
+                    textAlign: 'center',
+                  }}>{k}</span>
+                  <input value={val} onChange={e => setter(e.target.value)} onClick={e => e.stopPropagation()}
+                    style={{ flex: 1, border: 'none', outline: 'none', fontSize: 14, background: 'transparent', color: '#1F2937' }}
+                    placeholder={`选项${k}`} />
+                  {isCorrect && <span style={{ color: '#22C55E', fontSize: 16, lineHeight: 1 }}>✓</span>}
+                </div>
+              )
+            })}
           </div>
 
           <label style={labelStyle}>详解（可选）</label>
@@ -220,20 +270,35 @@ export default function QuestionBank() {
   const [selected, setSelected] = useState(() => new Set())
   const [deleting, setDeleting] = useState(false)
   const [allTags, setAllTags] = useState([])
-  const [filterTag, setFilterTag] = useState(null)
+  const [filterTags, setFilterTags] = useState(() => new Set())
+  const [tagDropdownOpen, setTagDropdownOpen] = useState(false)
+  const [tagSearch, setTagSearch] = useState('')
+  const tagDropdownRef = useRef(null)
 
   useEffect(() => {
     api.listTags().then(setAllTags).catch(() => {})
   }, [])
 
+  // 点击外部关闭标签下拉
+  useEffect(() => {
+    if (!tagDropdownOpen) return
+    function handleClick(e) {
+      if (tagDropdownRef.current && !tagDropdownRef.current.contains(e.target)) {
+        setTagDropdownOpen(false)
+        setTagSearch('')
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [tagDropdownOpen])
+
   useEffect(() => {
     setLoading(true)
-    const tagParam = filterTag ? `&tag=${encodeURIComponent(filterTag)}` : ''
-    api.listQuestions(page).then(res => {
+    api.listQuestions(page, filterTags.size > 0 ? [...filterTags].join(',') : null).then(res => {
       setQuestions(res.questions)
       setTotal(res.total)
     }).catch(() => {}).finally(() => setLoading(false))
-  }, [page, filterTag])
+  }, [page, filterTags])
 
   function handleClear() {
     if (!window.confirm(`确定要清空全部 ${total} 道题目吗？此操作不可恢复！`)) return
@@ -253,7 +318,6 @@ export default function QuestionBank() {
       setQuestions(res.questions)
       setTotal(res.total)
       setPage(1)
-      setFilterTag(null)
     }
     setShowForm(false)
     setEditingQ(null)
@@ -322,36 +386,59 @@ export default function QuestionBank() {
         </div>
       </div>
 
-      {/* 标签筛选栏 */}
+      {/* 标签筛选栏：紧凑下拉多选 */}
       {allTags.length > 0 && (
-        <div style={{ marginTop: 14, padding: '10px 14px', background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 10 }}>
-          <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 8 }}>按标签筛选</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            <button
-              onClick={() => { setFilterTag(null); setPage(1) }}
-              style={{
-                padding: '4px 12px', borderRadius: 20, fontSize: 13, cursor: 'pointer',
-                background: filterTag === null ? '#3B82F6' : '#fff',
-                color: filterTag === null ? '#fff' : '#374151',
-                border: filterTag === null ? 'none' : '1px solid #D1D5DB',
-              }}
-            >
-              全部
+        <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {/* 已选标签 chips */}
+          {filterTags.size > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+              {[...filterTags].map(tag => (
+                <span key={tag} style={{ background: '#3B82F6', color: '#fff', padding: '3px 8px', borderRadius: 16, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  {tag}
+                  <button onClick={() => { setFilterTags(prev => { const s = new Set(prev); s.delete(tag); return s }); setPage(1) }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#BFDBFE', fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
+                </span>
+              ))}
+              <button onClick={() => { setFilterTags(new Set()); setPage(1) }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 12 }}>清除</button>
+            </div>
+          )}
+          {/* 下拉选择器 */}
+          <div style={{ position: 'relative', display: 'inline-block' }}>
+            <button onClick={() => setTagDropdownOpen(v => !v)}
+              style={{ padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer',
+                background: filterTags.size > 0 ? '#EFF6FF' : '#fff',
+                color: filterTags.size > 0 ? '#1D4ED8' : '#374151',
+                border: filterTags.size > 0 ? '1px solid #BFDBFE' : '1px solid #D1D5DB' }}>
+              🏷️ 按标签筛选 {filterTags.size > 0 ? `(${filterTags.size})` : ''} ▾
             </button>
-            {allTags.map(t => (
-              <button
-                key={t.id}
-                onClick={() => { setFilterTag(t.name); setPage(1) }}
-                style={{
-                  padding: '4px 12px', borderRadius: 20, fontSize: 13, cursor: 'pointer',
-                  background: filterTag === t.name ? '#3B82F6' : '#fff',
-                  color: filterTag === t.name ? '#fff' : '#374151',
-                  border: filterTag === t.name ? 'none' : '1px solid #D1D5DB',
-                }}
-              >
-                #{t.name}
-              </button>
-            ))}
+            {tagDropdownOpen && (
+              <div ref={tagDropdownRef} style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4,
+                background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 50,
+                minWidth: 220, maxHeight: 280, overflowY: 'auto', padding: '8px 0', textAlign: 'left' }}>
+                <div style={{ padding: '4px 12px 8px', borderBottom: '1px solid #F3F4F6' }}>
+                  <input value={tagSearch} onChange={e => setTagSearch(e.target.value)}
+                    placeholder="搜索标签..." autoFocus
+                    style={{ width: '100%', border: 'none', outline: 'none', fontSize: 13, padding: '2px 0', boxSizing: 'border-box' }} />
+                </div>
+                {[...filterTags].map(tag => (
+                  <div key={tag} onClick={() => { setFilterTags(prev => { const s = new Set(prev); s.delete(tag); return s }); setPage(1) }}
+                    style={{ padding: '7px 12px', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, color: '#1D4ED8', background: '#EFF6FF' }}>
+                    <span style={{ color: '#3B82F6', fontWeight: 700, width: 16 }}>✓</span> {tag}
+                  </div>
+                ))}
+                {[...allTags].filter(t => !filterTags.has(t.name) && t.name.includes(tagSearch)).map(t => (
+                  <div key={t.id} onClick={() => { setFilterTags(prev => new Set([...prev, t.name])); setPage(1) }}
+                    style={{ padding: '7px 12px', fontSize: 13, cursor: 'pointer', color: '#374151' }}>
+                    {t.name}
+                  </div>
+                ))}
+                {[...allTags].filter(t => !filterTags.has(t.name) && !t.name.includes(tagSearch)).length > 0 && tagSearch && (
+                  <div style={{ padding: '6px 12px', fontSize: 12, color: '#9CA3AF' }}>无匹配结果</div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -459,7 +546,7 @@ export default function QuestionBank() {
                   <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     {q.tags && q.tags.map(t => (
                       <span key={t} style={{ background: '#EDE9FE', color: '#5B21B6', padding: '2px 8px', borderRadius: 12, fontSize: 11, cursor: 'pointer' }}
-                        onClick={() => { setFilterTag(t); setPage(1) }}>
+                        onClick={() => { setFilterTags(new Set([t])); setPage(1) }}>
                         #{t}
                       </span>
                     ))}

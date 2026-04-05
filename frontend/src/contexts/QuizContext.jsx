@@ -7,6 +7,7 @@ export function QuizProvider({ children }) {
   const [sessionId, setSessionId] = useState(null)
   // All questions in order: unanswered (selectedAnswer=null) + answered
   const [questions, setQuestions] = useState([])
+  const [activeTags, setActiveTags] = useState(() => new Set())
   const [currentPos, setCurrentPos] = useState(-1)  // index into questions
   const [answerState, setAnswerState] = useState('idle')  // 'idle' | 'correct' | 'wrong'
   const [analysisResult, setAnalysisResult] = useState(null)
@@ -20,8 +21,8 @@ export function QuizProvider({ children }) {
   const displayPos = currentPos + 1  // 1-indexed
 
   // 启动测试
-  const startQuiz = useCallback(async () => {
-    const res = await api.startQuiz()
+  const startQuiz = useCallback(async (tags = []) => {
+    const res = await api.startQuiz(tags)
     setSessionId(res.session_id)
     setQuestions([])
     setCurrentPos(-1)
