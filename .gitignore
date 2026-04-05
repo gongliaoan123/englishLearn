@@ -1,7 +1,11 @@
 .worktrees/
+backend/english_learn.db
 __pycache__/
 *.pyc
 backend/__pycache__/
 backend/.env
 frontend/node_modules/
 frontend/dist/
+deploy.sh
+.env
+.env.*
