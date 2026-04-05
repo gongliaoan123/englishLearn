@@ -100,10 +100,36 @@ export default function QuestionBank() {
         </div>
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 24 }}>
         <button disabled={page <= 1} onClick={() => setPage(p => p - 1)}>← 上一页</button>
-        <span style={{ lineHeight: '36px' }}>第 {page} 页</span>
+        <span style={{ lineHeight: '36px' }}>第 {page} / {Math.max(1, Math.ceil(total / 50))} 页</span>
         <button disabled={questions.length < 50} onClick={() => setPage(p => p + 1)}>下一页 →</button>
+        <span style={{ color: '#666', fontSize: 13 }}>|</span>
+        <input
+          type="number"
+          min={1}
+          max={Math.max(1, Math.ceil(total / 50))}
+          defaultValue={page}
+          style={{ width: 50, padding: '4px 8px', border: '1px solid #ccc', borderRadius: 6, fontSize: 13 }}
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              const val = parseInt(e.target.value)
+              const maxPage = Math.max(1, Math.ceil(total / 50))
+              if (val >= 1 && val <= maxPage) setPage(val)
+            }
+          }}
+        />
+        <button
+          onClick={e => {
+            const input = e.target.previousSibling
+            const val = parseInt(input.value)
+            const maxPage = Math.max(1, Math.ceil(total / 50))
+            if (val >= 1 && val <= maxPage) setPage(val)
+          }}
+          style={{ padding: '4px 12px', fontSize: 13, background: '#3B82F6', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}
+        >
+          跳转
+        </button>
       </div>
     </div>
   )
