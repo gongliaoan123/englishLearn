@@ -64,10 +64,17 @@ async def import_docx(file: UploadFile = File(...), db: Session = Depends(get_db
 
 
 @router.get("", response_model=QuestionListResponse)
-def list_questions(db: Session = Depends(get_db), page: int = 1, page_size: int = 50):
-    total = db.query(Question).count()
+def list_questions(db: Session = Depends(get_db), page: int = 1, page_size: int = 50, tag: str | None = None):
+    from models import QuestionTag
+    query = db.query(Question)
+    if tag:
+        tag_obj = db.query(Tag).filter(Tag.name == tag).first()
+        if tag_obj:
+            qids = db.query(QuestionTag.question_id).filter(QuestionTag.tag_id == tag_obj.id).subquery()
+            query = query.filter(Question.id.in_(qids))
+    total = query.count()
     questions = (
-        db.query(Question)
+        query
         .order_by(Question.created_at.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)

@@ -3,12 +3,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from database import SessionLocal
-from models import Question
+from models import Question, Tag, QuestionTag
 from schemas import (
-    QuizStartResponse, QuizNextResponse, QuizAnswerResponse, SessionSummaryResponse, QuizAnswerRequest
+    QuizStartRequest, QuizStartResponse, QuizNextResponse, QuizAnswerResponse, SessionSummaryResponse, QuizAnswerRequest
 )
 from services.mastery_tracker import record_answer
-from services.session_manager import start_session, mark_used, get_used_ids, record_correct, get_correct_count, end_session
+from services.session_manager import start_session, mark_used, get_used_ids, record_correct, get_correct_count, end_session, get_session_tags
 
 router = APIRouter()
 SESSION_SIZE = 10
@@ -22,18 +22,30 @@ def get_db():
 
 
 @router.post("/start", response_model=QuizStartResponse)
-def start_quiz(db: Session = Depends(get_db)):
-    total = db.query(Question).count()
+def start_quiz(body: QuizStartRequest | None = None, db: Session = Depends(get_db)):
+    tags = body.tags if body else []
+    query = db.query(Question)
+    if tags:
+        tag_ids = db.query(Tag.id).filter(Tag.name.in_(tags)).subquery()
+        qids = db.query(QuestionTag.question_id).filter(QuestionTag.tag_id.in_(tag_ids)).subquery()
+        query = query.filter(Question.id.in_(qids))
+    total = query.count()
     if total == 0:
         raise HTTPException(status_code=400, detail="No questions in database. Import questions first.")
-    session_id = start_session()
+    session_id = start_session(tags)
     return QuizStartResponse(session_id=session_id, total=SESSION_SIZE)
 
 
 @router.post("/next", response_model=QuizNextResponse)
 def next_question(session_id: str, current: int = 1, db: Session = Depends(get_db)):
     used_ids = get_used_ids(session_id)
-    candidates = db.query(Question).filter(Question.id.notin_(used_ids)).all()
+    tags = get_session_tags(session_id)
+    query = db.query(Question).filter(Question.id.notin_(used_ids))
+    if tags:
+        tag_ids = db.query(Tag.id).filter(Tag.name.in_(tags)).subquery()
+        qids = db.query(QuestionTag.question_id).filter(QuestionTag.tag_id.in_(tag_ids)).subquery()
+        query = query.filter(Question.id.in_(qids))
+    candidates = query.all()
     if not candidates:
         raise HTTPException(status_code=400, detail="No more questions available")
     q = random.choice(candidates)

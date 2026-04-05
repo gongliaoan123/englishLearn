@@ -57,4 +57,6 @@ export const api = {
   // Tags
   listTags: () =>
     request('GET', '/tags'),
+  searchTags: (q) =>
+    request('GET', `/tags/search?q=${encodeURIComponent(q)}`),
 }

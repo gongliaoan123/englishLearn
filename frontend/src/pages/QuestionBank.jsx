@@ -1,7 +1,106 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { api } from '../api'
 
 const TOTAL_PAGES = (total) => Math.max(1, Math.ceil(total / 50))
+
+// 标签自动补全输入框
+function TagInput({ value, onChange }) {
+  const [input, setInput] = useState('')
+  const [suggestions, setSuggestions] = useState([])
+  const [show, setShow] = useState(false)
+  const [highlighted, setHighlighted] = useState(-1)
+  const timerRef = useRef(null)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    setInput(value.join('，'))
+  }, [value])
+
+  function handleChange(e) {
+    const v = e.target.value
+    setInput(v)
+    clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(async () => {
+      const last = v.split(/[,，]/).pop().trim()
+      if (!last) { setSuggestions([]); setShow(false); return }
+      const res = await api.searchTags(last)
+      setSuggestions(res)
+      setShow(true)
+      setHighlighted(-1)
+    }, 200)
+  }
+
+  function handleKeyDown(e) {
+    if (!show || suggestions.length === 0) return
+    if (e.key === 'ArrowDown') { e.preventDefault(); setHighlighted(i => Math.min(i + 1, suggestions.length - 1)); return }
+    if (e.key === 'ArrowUp') { e.preventDefault(); setHighlighted(i => Math.max(i - 1, -1)); return }
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      const tag = highlighted >= 0 ? suggestions[highlighted].name : suggestions[0].name
+      commit(tag)
+      return
+    }
+    if (e.key === 'Tab') {
+      if (suggestions[0]) { e.preventDefault(); commit(suggestions[0].name) }
+    }
+  }
+
+  function commit(tag) {
+    if (tag && !value.includes(tag)) {
+      const parts = input.split(/[,，]/)
+      parts.pop()
+      onChange([...value, ...parts.map(t => t.trim()).filter(Boolean), tag])
+    }
+    setInput(value.join('，'))
+    setSuggestions([])
+    setShow(false)
+    setHighlighted(-1)
+  }
+
+  function removeTag(tag) {
+    onChange(value.filter(t => t !== tag))
+    setInput(value.filter(t => t !== tag).join('，'))
+  }
+
+  return (
+    <div style={{ position: 'relative' }} ref={ref}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '4px 8px', border: '1px solid #D1D5DB', borderRadius: 6, minHeight: 36, alignItems: 'center', background: '#fff' }}>
+        {value.map(tag => (
+          <span key={tag} style={{ background: '#EDE9FE', color: '#5B21B6', padding: '2px 6px', borderRadius: 12, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+            #{tag}
+            <button onClick={() => removeTag(tag)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7C3AED', fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
+          </span>
+        ))}
+        <input
+          value={input}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          onFocus={() => input && setShow(true)}
+          onBlur={() => setTimeout(() => setShow(false), 150)}
+          placeholder={value.length === 0 ? '输入标签，回车确认' : ''}
+          style={{ flex: 1, minWidth: 80, border: 'none', outline: 'none', fontSize: 14, padding: '2px 0', background: 'transparent' }}
+        />
+      </div>
+      {show && suggestions.length > 0 && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #D1D5DB', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 50, marginTop: 4, maxHeight: 180, overflowY: 'auto' }}>
+          {suggestions.map((t, i) => (
+            <div
+              key={t.id}
+              onMouseDown={() => commit(t.name)}
+              style={{
+                padding: '8px 12px', cursor: 'pointer', fontSize: 14,
+                background: i === highlighted ? '#EFF6FF' : '#fff',
+                color: '#1D4ED8',
+              }}
+            >
+              #{t.name}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function QuestionForm({ editing, initial, onSave, onCancel }) {
   const [content, setContent] = useState(initial?.content || '')
@@ -11,7 +110,7 @@ function QuestionForm({ editing, initial, onSave, onCancel }) {
   const [D, setD] = useState(initial?.options?.D || '')
   const [answer, setAnswer] = useState(initial?.answer || 'A')
   const [explanation, setExplanation] = useState(initial?.explanation || '')
-  const [tags, setTags] = useState((initial?.tags || []).join(', '))
+  const [tags, setTags] = useState(initial?.tags || [])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -28,7 +127,7 @@ function QuestionForm({ editing, initial, onSave, onCancel }) {
       options: { A: A.trim(), B: B.trim(), C: C.trim(), D: D.trim() },
       answer: answer.trim().toUpperCase(),
       explanation: explanation.trim() || null,
-      tags: tags.split(',').map(t => t.trim()).filter(Boolean),
+      tags,
     }
     try {
       await onSave(body)
@@ -90,10 +189,10 @@ function QuestionForm({ editing, initial, onSave, onCancel }) {
             rows={2} style={{ ...inputStyle, resize: 'vertical', marginBottom: 14 }}
             placeholder="输入题目详解" />
 
-          <label style={labelStyle}>标签（可选，多个用逗号分隔）</label>
-          <input value={tags} onChange={e => setTags(e.target.value)}
-            style={{ ...inputStyle, marginBottom: 20 }}
-            placeholder="如：定语从句，词义辨析" />
+          <label style={labelStyle}>标签（可选，输入时有自动补全）</label>
+          <div style={{ marginBottom: 20 }}>
+            <TagInput value={tags} onChange={setTags} />
+          </div>
 
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
             <button type="button" onClick={onCancel}
@@ -110,6 +209,7 @@ function QuestionForm({ editing, initial, onSave, onCancel }) {
     </div>
   )
 }
+
 export default function QuestionBank() {
   const [questions, setQuestions] = useState([])
   const [total, setTotal] = useState(0)
@@ -119,14 +219,21 @@ export default function QuestionBank() {
   const [editingQ, setEditingQ] = useState(null)
   const [selected, setSelected] = useState(() => new Set())
   const [deleting, setDeleting] = useState(false)
+  const [allTags, setAllTags] = useState([])
+  const [filterTag, setFilterTag] = useState(null)
+
+  useEffect(() => {
+    api.listTags().then(setAllTags).catch(() => {})
+  }, [])
 
   useEffect(() => {
     setLoading(true)
+    const tagParam = filterTag ? `&tag=${encodeURIComponent(filterTag)}` : ''
     api.listQuestions(page).then(res => {
       setQuestions(res.questions)
       setTotal(res.total)
     }).catch(() => {}).finally(() => setLoading(false))
-  }, [page])
+  }, [page, filterTag])
 
   function handleClear() {
     if (!window.confirm(`确定要清空全部 ${total} 道题目吗？此操作不可恢复！`)) return
@@ -142,14 +249,15 @@ export default function QuestionBank() {
       setQuestions(prev => prev.map(q => q.id === updated.id ? updated : q))
     } else {
       await api.createQuestion(body)
-      // 刷新当前页或跳到第一页
       const res = await api.listQuestions(1)
       setQuestions(res.questions)
       setTotal(res.total)
       setPage(1)
+      setFilterTag(null)
     }
     setShowForm(false)
     setEditingQ(null)
+    api.listTags().then(setAllTags).catch(() => {})
   }
 
   function startEdit(q) {
@@ -195,44 +303,67 @@ export default function QuestionBank() {
 
   return (
     <div style={{ paddingTop: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <h2>📚 题库</h2>
           <p style={{ color: '#666', margin: '4px 0 0' }}>共 {total} 题</p>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
-          <button
-            onClick={startAdd}
-            style={{
-              padding: '8px 16px',
-              background: '#3B82F6',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 6,
-              cursor: 'pointer',
-              fontSize: 13,
-            }}
-          >
+          <button onClick={startAdd}
+            style={{ padding: '8px 16px', background: '#3B82F6', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
             ➕ 手动录入
           </button>
           {total > 0 && (
-            <button
-              onClick={handleClear}
-              style={{
-                padding: '8px 16px',
-                background: '#EF4444',
-                color: '#fff',
-                border: 'none',
-                borderRadius: 6,
-                cursor: 'pointer',
-                fontSize: 13,
-              }}
-            >
+            <button onClick={handleClear}
+              style={{ padding: '8px 16px', background: '#EF4444', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
               🗑️ 清空题库
             </button>
           )}
         </div>
       </div>
+
+      {/* 标签筛选栏 */}
+      {allTags.length > 0 && (
+        <div style={{ marginTop: 14, padding: '10px 14px', background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 10 }}>
+          <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 8 }}>按标签筛选</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            <button
+              onClick={() => { setFilterTag(null); setPage(1) }}
+              style={{
+                padding: '4px 12px', borderRadius: 20, fontSize: 13, cursor: 'pointer',
+                background: filterTag === null ? '#3B82F6' : '#fff',
+                color: filterTag === null ? '#fff' : '#374151',
+                border: filterTag === null ? 'none' : '1px solid #D1D5DB',
+              }}
+            >
+              全部
+            </button>
+            {allTags.map(t => (
+              <button
+                key={t.id}
+                onClick={() => { setFilterTag(t.name); setPage(1) }}
+                style={{
+                  padding: '4px 12px', borderRadius: 20, fontSize: 13, cursor: 'pointer',
+                  background: filterTag === t.name ? '#3B82F6' : '#fff',
+                  color: filterTag === t.name ? '#fff' : '#374151',
+                  border: filterTag === t.name ? 'none' : '1px solid #D1D5DB',
+                }}
+              >
+                #{t.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {showForm && (
+        <QuestionForm
+          editing={!!editingQ}
+          initial={editingQ}
+          onSave={handleSave}
+          onCancel={() => { setShowForm(false); setEditingQ(null) }}
+        />
+      )}
 
       {/* 批量删除栏 */}
       {selected.size > 0 && (
@@ -249,10 +380,8 @@ export default function QuestionBank() {
               ref={el => { if (el) el.indeterminate = questions.length > 0 && !questions.every(q => selected.has(q.id)) && selected.size > 0 }}
               onChange={() => {
                 if (questions.every(q => selected.has(q.id))) {
-                  // 全不选
                   setSelected(prev => { const s = new Set(prev); questions.forEach(q => s.delete(q.id)); return s })
                 } else {
-                  // 全选
                   setSelected(prev => { const s = new Set(prev); questions.forEach(q => s.add(q.id)); return s })
                 }
               }}
@@ -271,15 +400,6 @@ export default function QuestionBank() {
             </button>
           </div>
         </div>
-      )}
-
-      {showForm && (
-        <QuestionForm
-          editing={!!editingQ}
-          initial={editingQ}
-          onSave={handleSave}
-          onCancel={() => { setShowForm(false); setEditingQ(null) }}
-        />
       )}
 
       {loading ? (
@@ -338,7 +458,8 @@ export default function QuestionBank() {
                   )}
                   <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     {q.tags && q.tags.map(t => (
-                      <span key={t} style={{ background: '#EDE9FE', color: '#5B21B6', padding: '2px 8px', borderRadius: 12, fontSize: 11 }}>
+                      <span key={t} style={{ background: '#EDE9FE', color: '#5B21B6', padding: '2px 8px', borderRadius: 12, fontSize: 11, cursor: 'pointer' }}
+                        onClick={() => { setFilterTag(t); setPage(1) }}>
                         #{t}
                       </span>
                     ))}

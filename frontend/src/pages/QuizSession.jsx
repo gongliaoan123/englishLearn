@@ -1,7 +1,76 @@
-import React, { useCallback } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuiz } from '../contexts/QuizContext'
 import QuestionCard from '../components/QuestionCard'
+import { api } from '../api'
+
+function StartScreen({ startQuiz, TOTAL }) {
+  const [tags, setTags] = useState([])
+  const [selected, setSelected] = useState(new Set())
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    api.listTags().then(res => {
+      setTags(res)
+      setLoading(false)
+    }).catch(() => setLoading(false))
+  }, [])
+
+  function toggle(tag) {
+    setSelected(prev => {
+      const s = new Set(prev)
+      s.has(tag) ? s.delete(tag) : s.add(tag)
+      return s
+    })
+  }
+
+  function handleStart() {
+    startQuiz([...selected])
+  }
+
+  return (
+    <div style={{ paddingTop: 40, textAlign: 'center' }}>
+      <h2>✏️ 开始测试</h2>
+      <p style={{ color: '#666' }}>每次 {TOTAL} 道选择题</p>
+
+      {!loading && tags.length > 0 && (
+        <div style={{ maxWidth: 500, margin: '20px auto 0', textAlign: 'left' }}>
+          <div style={{ fontSize: 13, color: '#666', marginBottom: 10, textAlign: 'center' }}>
+            可按标签筛选题目（可选）
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+            {tags.map(t => (
+              <button
+                key={t.id}
+                onClick={() => toggle(t.name)}
+                style={{
+                  padding: '4px 14px', borderRadius: 20, fontSize: 13, cursor: 'pointer',
+                  background: selected.has(t.name) ? '#3B82F6' : '#fff',
+                  color: selected.has(t.name) ? '#fff' : '#374151',
+                  border: selected.has(t.name) ? 'none' : '1px solid #D1D5DB',
+                }}
+              >
+                #{t.name}
+              </button>
+            ))}
+          </div>
+          {selected.size > 0 && (
+            <p style={{ textAlign: 'center', fontSize: 13, color: '#3B82F6', marginTop: 10 }}>
+              已选 {selected.size} 个标签，仅从这些标签出题
+            </p>
+          )}
+        </div>
+      )}
+
+      <button
+        onClick={handleStart}
+        style={{ marginTop: 28, padding: '12px 40px', fontSize: 16, background: '#3B82F6', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}
+      >
+        开始测试 →
+      </button>
+    </div>
+  )
+}
 
 function ExplanationPanel({ explanation, analysis, tags, isWrong }) {
   const [expanded, setExpanded] = React.useState(true)
@@ -96,18 +165,7 @@ export default function QuizSession() {
   }, [submitAnswer, navigate, questions, TOTAL])
 
   if (!sessionId) {
-    return (
-      <div style={{ paddingTop: 40, textAlign: 'center' }}>
-        <h2>✏️ 开始测试</h2>
-        <p style={{ color: '#666' }}>每次 {TOTAL} 道选择题</p>
-        <button
-          onClick={startQuiz}
-          style={{ marginTop: 24, padding: '12px 40px', fontSize: 16, background: '#3B82F6', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}
-        >
-          开始测试 →
-        </button>
-      </div>
-    )
+    return <StartScreen startQuiz={startQuiz} TOTAL={TOTAL} />
   }
 
   if (!current) {

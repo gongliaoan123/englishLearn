@@ -6,7 +6,7 @@ ANALYSIS_SYSTEM = """You are an expert English teacher. A student answered a mul
 Analyze why they got it wrong and suggest 2-5 knowledge point tags that describe the skill/concept being tested.
 Return a JSON object with:
 - analysis: str (2-3 sentences explaining the mistake cause in Chinese)
-- suggested_tags: list[str] (knowledge tags in English, e.g. ["past-perfect", "subjunctive-mood", "relative-clause"])
+- suggested_tags: list[str] (knowledge tags in Chinese, e.g. ["过去完成时", "虚拟语气", "定语从句"])
 Be concise and educational."""
 
 

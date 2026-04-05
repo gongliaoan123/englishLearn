@@ -45,6 +45,10 @@ class QuestionUpdate(BaseModel):
 
 # --- Quiz schemas ---
 
+class QuizStartRequest(BaseModel):
+    tags: list[str] = []   # filter by tags; empty = all tags
+
+
 class QuizStartResponse(BaseModel):
     session_id: str
     total: int  # 10

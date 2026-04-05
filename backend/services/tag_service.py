@@ -4,18 +4,21 @@ from models import Question, Tag, QuestionTag
 
 
 def normalize_tag(name: str) -> str:
-    """Normalize tag to lowercase kebab-case: 'Past Perfect' -> 'past-perfect'"""
-    # lowercase
+    """Normalize tag: Chinese tags preserved, English tags lowercased to kebab-case."""
+    name = name.strip()
+    if not name:
+        return ""
+    # If contains non-ASCII (Chinese/Japanese/Korean), preserve as-is
+    if re.search(r'[^\x00-\x7F]', name):
+        return name
+    # English: lowercase, replace spaces/underscores with hyphens
     name = name.lower()
-    # replace underscores, spaces, camelCase boundaries with hyphens
     name = re.sub(r"[_\s]+", "-", name)
     # strip non-alphanumeric except hyphen
     name = re.sub(r"[^a-z0-9-]", "", name)
     # collapse multiple hyphens
     name = re.sub(r"-+", "-", name)
-    # strip leading/trailing hyphens
-    name = name.strip("-")
-    return name
+    return name.strip("-")
 
 
 def get_or_create_tags(db: Session, question: Question, tag_names: list[str]) -> list[Tag]:
