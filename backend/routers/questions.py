@@ -64,11 +64,13 @@ async def import_docx(file: UploadFile = File(...), db: Session = Depends(get_db
 
 
 @router.get("", response_model=QuestionListResponse)
-def list_questions(db: Session = Depends(get_db), page: int = 1, page_size: int = 50, tags: str | None = None):
+def list_questions(db: Session = Depends(get_db), page: int = 1, page_size: int = 50, tag: str | None = None, tags: str | None = None):
     from models import QuestionTag
     query = db.query(Question)
-    if tags:
-        tag_names = [t.strip() for t in tags.split(',') if t.strip()]
+    # 兼容 tag（单）和 tags（多）两种参数名
+    tag_str = tags if tags else tag
+    if tag_str:
+        tag_names = [t.strip() for t in tag_str.split(',') if t.strip()]
         if tag_names:
             tag_objs = db.query(Tag).filter(Tag.name.in_(tag_names)).all()
             if tag_objs:
@@ -107,7 +109,10 @@ def delete_question(question_id: int, db: Session = Depends(get_db)):
     if not q:
         raise Exception("题目不存在")
     db.query(QuestionTag).filter(QuestionTag.question_id == question_id).delete()
-    db.query(AIAnalysis).filter(AIAnalysis.question_id == question_id).delete()
+    # AIAnalysis 通过 wrong_question → wrong_question_id 关联
+    wq_ids = db.query(WrongQuestion.id).filter(WrongQuestion.question_id == question_id).all()
+    if wq_ids:
+        db.query(AIAnalysis).filter(AIAnalysis.wrong_question_id.in_([wq.id for wq in wq_ids])).delete(synchronize_session=False)
     db.query(WrongQuestion).filter(WrongQuestion.question_id == question_id).delete()
     db.delete(q)
     db.commit()

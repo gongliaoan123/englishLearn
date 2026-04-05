@@ -308,6 +308,29 @@ export default function QuestionBank() {
     }).catch(err => alert('清空失败：' + err.message))
   }
 
+  async function handleDeleteTag(tagId, tagName) {
+    if (!window.confirm(`确定删除标签「${tagName}」？所有题目的该标签都会被移除。`)) return
+    try {
+      await api.deleteTag(tagId)
+      setAllTags(prev => prev.filter(t => t.id !== tagId))
+      setFilterTags(prev => { const s = new Set(prev); s.delete(tagName); return s })
+    } catch (err) {
+      alert('删除失败：' + err.message)
+    }
+  }
+
+  async function handleRemoveTagFromQuestion(questionId, tagName) {
+    const q = questions.find(q => q.id === questionId)
+    if (!q) return
+    const newTags = (q.tags || []).filter(t => t !== tagName)
+    try {
+      const updated = await api.updateQuestion(questionId, { tags: newTags })
+      setQuestions(prev => prev.map(q => q.id === questionId ? { ...q, tags: updated.tags } : q))
+    } catch (err) {
+      alert('移除标签失败：' + err.message)
+    }
+  }
+
   async function handleSave(body) {
     if (editingQ) {
       const updated = await api.updateQuestion(editingQ.id, body)
@@ -422,16 +445,29 @@ export default function QuestionBank() {
                     placeholder="搜索标签..." autoFocus
                     style={{ width: '100%', border: 'none', outline: 'none', fontSize: 13, padding: '2px 0', boxSizing: 'border-box' }} />
                 </div>
-                {[...filterTags].map(tag => (
-                  <div key={tag} onClick={() => { setFilterTags(prev => { const s = new Set(prev); s.delete(tag); return s }); setPage(1) }}
-                    style={{ padding: '7px 12px', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, color: '#1D4ED8', background: '#EFF6FF' }}>
-                    <span style={{ color: '#3B82F6', fontWeight: 700, width: 16 }}>✓</span> {tag}
-                  </div>
-                ))}
+                {[...filterTags].map(tag => {
+                  const tagObj = allTags.find(t => t.name === tag)
+                  return (
+                    <div key={tag} style={{ padding: '7px 12px', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8, background: '#EFF6FF', color: '#1D4ED8' }}>
+                      <span onClick={() => { setFilterTags(prev => { const s = new Set(prev); s.delete(tag); return s }); setPage(1) }}
+                        style={{ flex: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ color: '#3B82F6', fontWeight: 700, width: 16 }}>✓</span> {tag}
+                      </span>
+                      {tagObj && (
+                        <button onClick={() => handleDeleteTag(tagObj.id, tag)}
+                          title="删除此标签"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 14, padding: '0 2px', lineHeight: 1 }}>×</button>
+                      )}
+                    </div>
+                  )
+                })}
                 {[...allTags].filter(t => !filterTags.has(t.name) && t.name.includes(tagSearch)).map(t => (
-                  <div key={t.id} onClick={() => { setFilterTags(prev => new Set([...prev, t.name])); setPage(1) }}
-                    style={{ padding: '7px 12px', fontSize: 13, cursor: 'pointer', color: '#374151' }}>
-                    {t.name}
+                  <div key={t.id} style={{ padding: '7px 12px', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8, color: '#374151' }}>
+                    <span onClick={() => { setFilterTags(prev => new Set([...prev, t.name])); setPage(1) }}
+                      style={{ flex: 1, cursor: 'pointer' }}>{t.name}</span>
+                    <button onClick={() => handleDeleteTag(t.id, t.name)}
+                      title="删除此标签"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 14, padding: '0 2px', lineHeight: 1 }}>×</button>
                   </div>
                 ))}
                 {[...allTags].filter(t => !filterTags.has(t.name) && !t.name.includes(tagSearch)).length > 0 && tagSearch && (
@@ -545,9 +581,10 @@ export default function QuestionBank() {
                   )}
                   <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     {q.tags && q.tags.map(t => (
-                      <span key={t} style={{ background: '#EDE9FE', color: '#5B21B6', padding: '2px 8px', borderRadius: 12, fontSize: 11, cursor: 'pointer' }}
-                        onClick={() => { setFilterTags(new Set([t])); setPage(1) }}>
-                        #{t}
+                      <span key={t} style={{ background: '#EDE9FE', color: '#5B21B6', padding: '2px 6px 2px 8px', borderRadius: 12, fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <span style={{ cursor: 'pointer' }} onClick={() => { setFilterTags(new Set([t])); setPage(1) }}>#{t}</span>
+                        <button onClick={() => handleRemoveTagFromQuestion(q.id, t)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7C3AED', fontSize: 13, lineHeight: 1, padding: 0 }}>×</button>
                       </span>
                     ))}
                     <span style={{ background: q.source === 'ai_generated' ? '#FEF9C3' : '#DBEAFE', color: '#555', padding: '2px 8px', borderRadius: 12, fontSize: 11 }}>

@@ -59,4 +59,6 @@ export const api = {
     request('GET', '/tags'),
   searchTags: (q) =>
     request('GET', `/tags/search?q=${encodeURIComponent(q)}`),
+  deleteTag: (id) =>
+    request('DELETE', `/tags/${id}`),
 }

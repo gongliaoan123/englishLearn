@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from database import SessionLocal
-from models import Tag
+from models import Tag, QuestionTag
 
 router = APIRouter()
 
@@ -30,3 +30,11 @@ def search_tags(q: str = "", db: Session = Depends(get_db)):
         .all()
     )
     return [{"id": t.id, "name": t.name} for t in tags]
+
+
+@router.delete("/{tag_id}")
+def delete_tag(tag_id: int, db: Session = Depends(get_db)):
+    db.query(QuestionTag).filter(QuestionTag.tag_id == tag_id).delete()
+    db.query(Tag).filter(Tag.id == tag_id).delete()
+    db.commit()
+    return {"ok": True}
