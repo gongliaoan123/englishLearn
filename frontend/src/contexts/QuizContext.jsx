@@ -14,16 +14,17 @@ export function QuizProvider({ children }) {
   const [wrongQuestionId, setWrongQuestionId] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [confirmedWrongIds, setConfirmedWrongIds] = useState(() => new Set())
-  const TOTAL = 10
+  const [sessionTotal, setSessionTotal] = useState(10)
 
   // current = the question currently displayed (at currentPos)
   const current = currentPos >= 0 ? questions[currentPos] : null
   const displayPos = currentPos + 1  // 1-indexed
 
   // 启动测试
-  const startQuiz = useCallback(async (tags = []) => {
-    const res = await api.startQuiz(tags)
+  const startQuiz = useCallback(async (tags = [], total = 10) => {
+    const res = await api.startQuiz(tags, total)
     setSessionId(res.session_id)
+    setSessionTotal(res.total)
     setQuestions([])
     setCurrentPos(-1)
     setAnswerState('idle')
@@ -31,6 +32,22 @@ export function QuizProvider({ children }) {
     setWrongQuestionId(null)
     setConfirmedWrongIds(() => new Set())
     // fetch first question
+    const q = await api.nextQuestion(res.session_id, 1)
+    setQuestions([{ ...q, selectedAnswer: null, isCorrect: null }])
+    setCurrentPos(0)
+  }, [])
+
+  // 错题本练习
+  const startQuizFromWrong = useCallback(async (total = 10) => {
+    const res = await api.startQuizFromWrong(total)
+    setSessionId(res.session_id)
+    setSessionTotal(res.total)
+    setQuestions([])
+    setCurrentPos(-1)
+    setAnswerState('idle')
+    setAnalysisResult(null)
+    setWrongQuestionId(null)
+    setConfirmedWrongIds(() => new Set())
     const q = await api.nextQuestion(res.session_id, 1)
     setQuestions([{ ...q, selectedAnswer: null, isCorrect: null }])
     setCurrentPos(0)
@@ -113,7 +130,7 @@ export function QuizProvider({ children }) {
       return
     }
     // 需要创建新题
-    if (questions.length >= TOTAL) {
+    if (questions.length >= sessionTotal) {
       navigate('/wrong-log')
       return
     }
@@ -127,7 +144,7 @@ export function QuizProvider({ children }) {
     } finally {
       setSubmitting(false)
     }
-  }, [currentPos, questions.length, sessionId])
+  }, [currentPos, questions.length, sessionId, sessionTotal])
 
   // 下一题
   const nextQuestion = useCallback(async (navigate) => {
@@ -137,7 +154,7 @@ export function QuizProvider({ children }) {
       return
     }
     // 真的没有下一题了，才创建新的
-    if (questions.length >= TOTAL) {
+    if (questions.length >= sessionTotal) {
       navigate('/wrong-log')
       return
     }
@@ -193,11 +210,22 @@ export function QuizProvider({ children }) {
     }
   }, [questions])
 
+  // 重置测试，回到开始页
+  const resetQuiz = useCallback(() => {
+    setSessionId(null)
+    setQuestions([])
+    setCurrentPos(-1)
+    setAnswerState('idle')
+    setAnalysisResult(null)
+    setWrongQuestionId(null)
+    setConfirmedWrongIds(() => new Set())
+  }, [])
+
   return (
     <QuizContext.Provider value={{
       sessionId, questions, current, currentPos, answerState, submitting,
-      analysisResult, wrongQuestionId, confirmedWrongIds, TOTAL,
-      startQuiz, submitAnswer, confirmAnalysis, skipAnalysis,
+      analysisResult, wrongQuestionId, confirmedWrongIds, sessionTotal,
+      startQuiz, startQuizFromWrong, resetQuiz, submitAnswer, confirmAnalysis, skipAnalysis,
       nextQuestion, prevQuestion, jumpTo,
     }}>
       {children}

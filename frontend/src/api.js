@@ -35,8 +35,10 @@ export const api = {
     request('DELETE', '/questions'),
 
   // Quiz
-  startQuiz: () =>
-    request('POST', '/quiz/start'),
+  startQuiz: (tags = [], total = 10) =>
+    request('POST', '/quiz/start', { tags, total }),
+  startQuizFromWrong: (total = 10) =>
+    request('POST', '/quiz/start-from-wrong', { total }),
   nextQuestion: (sessionId, current) =>
     request('POST', `/quiz/next?session_id=${sessionId}&current=${current}`),
   submitAnswer: (body) =>
@@ -49,6 +51,12 @@ export const api = {
     request('POST', `/analysis/${wrongQuestionId}/confirm`, { tags }),
   rejectAnalysis: (wrongQuestionId) =>
     request('POST', `/analysis/${wrongQuestionId}/reject`),
+  listWrongQuestions: (page = 1, pageSize = 20) =>
+    request('GET', `/analysis?page=${page}&page_size=${pageSize}`),
+  deleteWrongQuestion: (id) =>
+    request('DELETE', `/analysis/${id}`),
+  clearWrongQuestions: () =>
+    request('POST', '/analysis/clear'),
 
   // Similar
   getSimilar: (questionId) =>

@@ -47,6 +47,7 @@ class QuestionUpdate(BaseModel):
 
 class QuizStartRequest(BaseModel):
     tags: list[str] = []   # filter by tags; empty = all tags
+    total: int | None = None  # number of questions; defaults to 10
 
 
 class QuizStartResponse(BaseModel):

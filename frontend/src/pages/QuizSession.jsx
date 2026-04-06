@@ -4,13 +4,18 @@ import { useQuiz } from '../contexts/QuizContext'
 import QuestionCard from '../components/QuestionCard'
 import { api } from '../api'
 
-function StartScreen({ startQuiz, TOTAL }) {
+function StartScreen({ startQuiz, startQuizFromWrong, TOTAL }) {
+  const [tab, setTab] = useState('all')
   const [tags, setTags] = useState([])
   const [selected, setSelected] = useState(new Set())
   const [loading, setLoading] = useState(true)
   const [tagDropdownOpen, setTagDropdownOpen] = useState(false)
   const [tagSearch, setTagSearch] = useState('')
+  const [starting, setStarting] = useState(false)
   const tagDropdownRef = useRef(null)
+  const [total, setTotal] = useState(10)
+  const [customTotal, setCustomTotal] = useState('')
+  const [useCustom, setUseCustom] = useState(false)
 
   useEffect(() => {
     api.listTags().then(res => {
@@ -19,7 +24,6 @@ function StartScreen({ startQuiz, TOTAL }) {
     }).catch(() => setLoading(false))
   }, [])
 
-  // 点击外部关闭下拉
   useEffect(() => {
     if (!tagDropdownOpen) return
     function handleClick(e) {
@@ -32,18 +36,79 @@ function StartScreen({ startQuiz, TOTAL }) {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [tagDropdownOpen])
 
-  function handleStart() {
-    startQuiz([...selected])
+  const effectiveTotal = useCustom ? (parseInt(customTotal, 10) || 10) : total
+
+  async function handleStart() {
+    setStarting(true)
+    try {
+      if (tab === 'wrong') {
+        await startQuizFromWrong(effectiveTotal)
+      } else {
+        await startQuiz(tab === 'tag' ? [...selected] : [], effectiveTotal)
+      }
+    } catch (err) {
+      alert(err.message)
+      setStarting(false)
+    }
   }
+
+  const TABS = [
+    { key: 'all', label: '全部题目' },
+    { key: 'tag', label: '按标签' },
+    { key: 'wrong', label: '错题本' },
+  ]
+
+  const QUICK_TOTALS = [5, 10, 15, 20]
 
   return (
     <div style={{ paddingTop: 40, textAlign: 'center' }}>
       <h2>✏️ 开始测试</h2>
-      <p style={{ color: '#666' }}>每次 {TOTAL} 道选择题</p>
+      <p style={{ color: '#666' }}>每次练习</p>
 
-      {!loading && tags.length > 0 && (
-        <div style={{ maxWidth: 500, margin: '20px auto 0', display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
-          {/* 已选标签 chips */}
+      {/* Tab 切换 */}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 0, marginTop: 20, border: '1px solid #E5E7EB', borderRadius: 10, padding: 3, display: 'inline-flex' }}>
+        {TABS.map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            style={{ padding: '6px 20px', borderRadius: 8, fontSize: 13, cursor: 'pointer',
+              background: tab === t.key ? '#3B82F6' : '#fff',
+              color: tab === t.key ? '#fff' : '#374151',
+              border: 'none', transition: 'all 0.15s' }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* 题目数量选择 */}
+      <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 13, color: '#666' }}>题目数量：</span>
+          {QUICK_TOTALS.map(n => (
+            <button key={n} onClick={() => { setTotal(n); setUseCustom(false) }}
+              style={{ padding: '4px 12px', borderRadius: 6, fontSize: 13, cursor: 'pointer',
+                background: !useCustom && total === n ? '#3B82F6' : '#fff',
+                color: !useCustom && total === n ? '#fff' : '#374151',
+                border: !useCustom && total === n ? 'none' : '1px solid #D1D5DB',
+                transition: 'all 0.15s' }}>
+              {n}题
+            </button>
+          ))}
+          <span style={{ color: '#9CA3AF', fontSize: 12 }}>|</span>
+          <input
+            type="number"
+            min="1"
+            max="100"
+            value={customTotal}
+            onChange={e => { setCustomTotal(e.target.value); setUseCustom(true) }}
+            placeholder="自定义"
+            style={{ width: 56, padding: '4px 8px', borderRadius: 6, border: '1px solid #D1D5DB', fontSize: 13, outline: 'none' }}
+          />
+        </div>
+        <span style={{ fontSize: 12, color: '#9CA3AF' }}>共 {effectiveTotal} 道题</span>
+      </div>
+
+      {/* 标签筛选内容 */}
+      {tab === 'tag' && !loading && tags.length > 0 && (
+        <div style={{ maxWidth: 500, margin: '16px auto 0', display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
           {selected.size > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center' }}>
               {[...selected].map(tag => (
@@ -53,18 +118,16 @@ function StartScreen({ startQuiz, TOTAL }) {
                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#BFDBFE', fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
                 </span>
               ))}
-              <button onClick={() => setSelected(new Set())}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 12 }}>清除</button>
+              <button onClick={() => setSelected(new Set())} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 12 }}>清除</button>
             </div>
           )}
-          {/* 下拉选择器 */}
           <div style={{ position: 'relative' }} ref={tagDropdownRef}>
             <button onClick={() => setTagDropdownOpen(v => !v)}
               style={{ padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer',
                 background: selected.size > 0 ? '#EFF6FF' : '#fff',
                 color: selected.size > 0 ? '#1D4ED8' : '#374151',
                 border: selected.size > 0 ? '1px solid #BFDBFE' : '1px solid #D1D5DB' }}>
-              🏷️ 按标签筛选 {selected.size > 0 ? `(${selected.size})` : ''} ▾
+              🏷️ 选择标签 {selected.size > 0 ? `(${selected.size})` : ''} ▾
             </button>
             {tagDropdownOpen && (
               <div style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
@@ -94,20 +157,23 @@ function StartScreen({ startQuiz, TOTAL }) {
               </div>
             )}
           </div>
-          {selected.size > 0 && (
-            <p style={{ fontSize: 13, color: '#3B82F6' }}>
-              仅从选中的 {selected.size} 个标签出题
-            </p>
-          )}
+          {selected.size > 0 && <p style={{ fontSize: 13, color: '#3B82F6' }}>从 {selected.size} 个标签出题</p>}
         </div>
       )}
 
-      <button
-        onClick={handleStart}
-        style={{ marginTop: 28, padding: '12px 40px', fontSize: 16, background: '#3B82F6', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}
-      >
-        开始测试 →
-      </button>
+      {tab === 'wrong' && (
+        <p style={{ marginTop: 16, fontSize: 13, color: '#666' }}>自动从错题本随机抽取题目练习</p>
+      )}
+
+      <div style={{ marginTop: 28, textAlign: 'center' }}>
+        <button
+          onClick={handleStart}
+          disabled={starting}
+          style={{ padding: '12px 40px', fontSize: 16, background: '#3B82F6', color: '#fff', border: 'none', borderRadius: 8, cursor: starting ? 'not-allowed' : 'pointer', opacity: starting ? 0.6 : 1 }}
+        >
+          {starting ? '加载中...' : tab === 'wrong' ? '🗂️ 错题本练习 →' : '开始测试 →'}
+        </button>
+      </div>
     </div>
   )
 }
@@ -190,8 +256,8 @@ export default function QuizSession() {
   const navigate = useNavigate()
   const {
     sessionId, questions, current, currentPos, answerState, submitting,
-    analysisResult, wrongQuestionId, confirmedWrongIds, TOTAL,
-    startQuiz, submitAnswer, confirmAnalysis, skipAnalysis,
+    analysisResult, wrongQuestionId, confirmedWrongIds, sessionTotal,
+    startQuiz, startQuizFromWrong, resetQuiz, submitAnswer, confirmAnalysis, skipAnalysis,
     nextQuestion, prevQuestion, jumpTo,
   } = useQuiz()
 
@@ -199,13 +265,18 @@ export default function QuizSession() {
     const res = await submitAnswer(selected)
     if (res?.is_session_over) {
       navigate('/result', {
-        state: { questions, correctCount: res.correct_count, total: TOTAL },
+        state: { questions, correctCount: res.correct_count, total: sessionTotal },
       })
     }
-  }, [submitAnswer, navigate, questions, TOTAL])
+  }, [submitAnswer, navigate, questions, sessionTotal])
+
+  const handleBack = useCallback(() => {
+    if (!window.confirm('确定要退出测试吗？当前进度将丢失。')) return
+    resetQuiz()
+  }, [resetQuiz])
 
   if (!sessionId) {
-    return <StartScreen startQuiz={startQuiz} TOTAL={TOTAL} />
+    return <StartScreen startQuiz={startQuiz} startQuizFromWrong={startQuizFromWrong} TOTAL={sessionTotal} />
   }
 
   if (!current) {
@@ -216,7 +287,7 @@ export default function QuizSession() {
   const canGoPrev = currentPos > 0
   const canGoNext = currentPos < questions.length - 1
   const isCurrentUnanswered = current.isCorrect === null
-  const isAllDone = displayPos >= TOTAL && !isCurrentUnanswered
+  const isAllDone = displayPos >= sessionTotal && !isCurrentUnanswered
 
   const btn = { padding: '8px 12px', border: '1px solid #ccc', borderRadius: 8, background: '#fff', fontSize: 13, cursor: 'pointer', flexShrink: 0 }
 
@@ -227,16 +298,22 @@ export default function QuizSession() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <h2 style={{ margin: 0 }}>✏️ 测试中</h2>
           <button
+            onClick={handleBack}
+            style={{ padding: '4px 12px', background: '#fff', color: '#6B7280', border: '1px solid #D1D5DB', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}
+          >
+            ← 返回
+          </button>
+          <button
             onClick={() => { if (window.confirm('确定要重新开始吗？当前进度将丢失。')) startQuiz() }}
             style={{ padding: '4px 12px', background: '#fff', color: '#EF4444', border: '1px solid #EF4444', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}
           >
             重新开始
           </button>
         </div>
-        <span style={{ color: '#666' }}>{Math.min(questions.length, TOTAL)} / {TOTAL}</span>
+        <span style={{ color: '#666' }}>{Math.min(questions.length, sessionTotal)} / {sessionTotal}</span>
       </div>
       <div style={{ background: '#E5E7EB', height: 6, borderRadius: 3, marginTop: 8 }}>
-        <div style={{ background: '#3B82F6', height: '100%', borderRadius: 3, width: `${(Math.min(questions.length, TOTAL) / TOTAL) * 100}%`, transition: 'width 0.3s' }} />
+        <div style={{ background: '#3B82F6', height: '100%', borderRadius: 3, width: `${(Math.min(questions.length, sessionTotal) / sessionTotal) * 100}%`, transition: 'width 0.3s' }} />
       </div>
       <div style={{ marginTop: 10, fontSize: 13, color: '#666' }}>
         第 {displayPos} 题
@@ -315,7 +392,7 @@ export default function QuizSession() {
 
         {/* 下一题：最后一题时不显示（防止尝试加载不存在的题） */}
         {answerState !== 'wrong' || wrongQuestionId === null ? (
-          displayPos < TOTAL && (
+          displayPos < sessionTotal && (
             <button
               onClick={() => nextQuestion(navigate)}
               style={{ ...btn, background: '#3B82F6', color: '#fff', border: 'none', flexShrink: 0 }}
@@ -327,7 +404,7 @@ export default function QuizSession() {
         {/* 最后一题且已答 → 查看结果 */}
         {isAllDone && (
           <button
-            onClick={() => navigate('/result', { state: { questions, total: TOTAL } })}
+            onClick={() => navigate('/result', { state: { questions, total: sessionTotal } })}
             style={{ ...btn, background: '#6B7280', color: '#fff', border: 'none', flexShrink: 0 }}
           >
             查看结果

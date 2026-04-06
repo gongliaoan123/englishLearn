@@ -89,18 +89,44 @@ def reject_analysis(wrong_question_id: int, db: Session = Depends(get_db)):
     return {"ok": True}
 
 
+@router.delete("/{wrong_question_id}")
+def delete_wrong_question(wrong_question_id: int, db: Session = Depends(get_db)):
+    wq = db.query(WrongQuestion).filter(WrongQuestion.id == wrong_question_id).first()
+    if not wq:
+        raise HTTPException(status_code=404, detail="错题不存在")
+    db.query(AIAnalysis).filter(AIAnalysis.wrong_question_id == wrong_question_id).delete(synchronize_session=False)
+    db.query(WrongQuestion).filter(WrongQuestion.id == wrong_question_id).delete()
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/clear")
+def clear_all_wrong_questions(db: Session = Depends(get_db)):
+    db.query(AIAnalysis).delete()
+    db.query(WrongQuestion).delete()
+    db.commit()
+    return {"ok": True}
+
+
 @router.get("")
-def list_wrong_questions(db: Session = Depends(get_db)):
-    wqs = db.query(WrongQuestion).order_by(WrongQuestion.last_wrong_at.desc()).limit(100).all()
-    return [
-        {
-            "id": wq.id,
-            "question_id": wq.question_id,
-            "content": wq.question.content,
-            "wrong_count": wq.wrong_count,
-            "consecutive_correct": wq.consecutive_correct,
-            "status": wq.status,
-            "last_wrong_at": wq.last_wrong_at.isoformat() if wq.last_wrong_at else None,
-        }
-        for wq in wqs
-    ]
+def list_wrong_questions(page: int = 1, page_size: int = 20, db: Session = Depends(get_db)):
+    total = db.query(WrongQuestion).count()
+    wqs = db.query(WrongQuestion).order_by(WrongQuestion.last_wrong_at.desc()) \
+        .offset((page - 1) * page_size).limit(page_size).all()
+    return {
+        "items": [
+            {
+                "id": wq.id,
+                "question_id": wq.question_id,
+                "content": wq.question.content,
+                "wrong_count": wq.wrong_count,
+                "consecutive_correct": wq.consecutive_correct,
+                "status": wq.status,
+                "last_wrong_at": wq.last_wrong_at.isoformat() if wq.last_wrong_at else None,
+            }
+            for wq in wqs
+        ],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
