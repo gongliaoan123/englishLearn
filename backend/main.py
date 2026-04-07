@@ -43,3 +43,4 @@ async def register_routers():
     app.include_router(similar.router, prefix="/api/similar", tags=["similar"])
     app.include_router(tags.router, prefix="/api/tags", tags=["tags"])
     app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+    app.include_router(admin.router, prefix="/api", tags=["admin"])
