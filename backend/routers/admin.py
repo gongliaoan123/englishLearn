@@ -288,7 +288,7 @@ async def admin_panel(request: Request, table: str = None, page: int = 1,
         if edit is not None:
             pk_val = edit
             with engine.connect() as conn:
-                result = conn.execute(text(f"SELECT * FROM {table} WHERE {pk_col}=?"), (pk_val,))
+                result = conn.execute(text(f"SELECT * FROM {table} WHERE {pk_col}=:pk"), {"pk": pk_val})
                 row = result.fetchone()
             if row:
                 edit_row = dict(zip(cols, row))
@@ -334,7 +334,7 @@ async def save_row(table: str, request: Request,
 async def delete_row(table: str, request: Request,
                      pk: str = Form(...), pk_val: str = Form(...), page: int = Form(1)):
     with engine.connect() as conn:
-        conn.execute(text(f"DELETE FROM {table} WHERE {pk}=?"), (pk_val,))
+        conn.execute(text(f"DELETE FROM {table} WHERE {pk}=:pk"), {"pk": pk_val})
         conn.commit()
     return RedirectResponse(f"/api/admin?table={table}&page={page}&msg=删除成功", status_code=303)
 
