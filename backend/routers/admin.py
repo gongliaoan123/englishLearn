@@ -7,6 +7,21 @@ import html
 router = APIRouter()
 
 
+def _check_admin(request: Request):
+    from middleware.auth import get_current_user_id
+    from models import User
+    user_id = get_current_user_id(request)
+    if user_id is None:
+        return False
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        admin = db.query(User).filter(User.id == user_id).first()
+        return admin and admin.is_admin
+    finally:
+        db.close()
+
+
 def get_tables():
     with engine.connect() as conn:
         result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"))
@@ -328,6 +343,11 @@ async def admin_panel(request: Request, table: str = None, page: int = 1,
                        edit: str = None, new: str = None):
     from middleware.auth import get_current_user_id
     user_id = get_current_user_id(request)
+    if user_id is None:
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse('/login', status_code=302)
+    if not _check_admin(request):
+        return HTMLResponse('<html><body style="font-family:sans-serif;padding:40px;text-align:center"><h1>权限不足</h1><p>仅管理员可访问此页面</p><a href="/">返回首页</a></body></html>', status_code=403)
 
     tables = get_tables()
     sidebar_links = '\n'.join(
@@ -419,6 +439,9 @@ async def admin_panel(request: Request, table: str = None, page: int = 1,
 @router.post("/admin/{table}/save", response_class=RedirectResponse)
 async def save_row(table: str, request: Request,
                     pk: str = Form(...), pk_val: str = Form(None)):
+    if not _check_admin(request):
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse('<html><body style="font-family:sans-serif;padding:40px;text-align:center"><h1>权限不足</h1></body></html>', status_code=403)
     form = await request.form()
     fields = {k[2:]: v for k, v in form.items() if k.startswith('f_')}
 
@@ -447,6 +470,9 @@ async def save_row(table: str, request: Request,
 @router.post("/admin/{table}/delete", response_class=RedirectResponse)
 async def delete_row(table: str, request: Request,
                      pk: str = Form(...), pk_val: str = Form(...), page: int = Form(1)):
+    if not _check_admin(request):
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse('<html><body><h1>权限不足</h1></body></html>', status_code=403)
     with engine.connect() as conn:
         conn.execute(text(f"DELETE FROM {table} WHERE {pk}=:pk"), {"pk": pk_val})
         conn.commit()
@@ -458,6 +484,8 @@ async def cell_update(table: str, request: Request,
                       pk: str = Form(...), pk_val: str = Form(...),
                       col: str = Form(...), value: str = Form(...)):
     from fastapi.responses import JSONResponse
+    if not _check_admin(request):
+        return JSONResponse({"ok": False, "error": "权限不足"}, status_code=403)
     # 空字符串转 NULL
     final_val = None if value == '' else value
     try:
