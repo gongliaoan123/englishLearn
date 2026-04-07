@@ -123,12 +123,6 @@ ADMIN_PAGE = """<!DOCTYPE html>
 </div>
 <script>
 var _table = __TABLE__, _pk = __PK__;
-console.log('[Admin] table:', _table, 'pk:', _pk);
-(function() {
-  var cells = document.querySelectorAll('td.cell-editable');
-  console.log('[Admin] editable cells found:', cells.length);
-  cells.forEach(function(c, i) { if (i < 3) console.log('[Admin] cell', i, 'col:', c.dataset.col, 'pk:', c.dataset.pk); });
-})();
 
 function showMsg(text, ok) {
   var m = document.createElement('div');
@@ -147,7 +141,6 @@ function fmtVal(v) {
 }
 
 function startEdit(td) {
-  console.log('[Admin] startEdit called, col:', td.dataset.col, 'raw:', td.dataset.raw);
   if (td.querySelector('input,select')) return;
   var col = td.dataset.col;
   var pkVal = td.dataset.pk;
@@ -218,13 +211,8 @@ function startEdit(td) {
 }
 
 document.addEventListener('click', function(e) {
-  console.log('[Admin] click on:', e.target.tagName, e.target.className, e.target.id);
   var td = e.target.closest('td.cell-editable');
-  console.log('[Admin] closest editable td:', td ? td.dataset.col : 'none');
-  if (td && !td.querySelector('input,select')) {
-    console.log('[Admin] calling startEdit');
-    startEdit(td);
-  }
+  if (td && !td.querySelector('input,select')) startEdit(td);
 });
 </script>
 </body>
