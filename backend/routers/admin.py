@@ -139,6 +139,11 @@ ADMIN_PAGE = """<!DOCTYPE html>
 <script>
 var _table = __TABLE__, _pk = __PK__;
 
+function authHeaders() {
+  var token = localStorage.getItem('token');
+  return token ? {'Authorization': 'Bearer ' + token} : {};
+}
+
 function showMsg(text, ok) {
   var m = document.createElement('div');
   m.className = 'cell-msg ' + (ok ? 'ok' : 'err');
@@ -197,7 +202,7 @@ function startEdit(td) {
     td.textContent = '...';
     fetch('/api/admin/' + _table + '/cell-update', {
       method: 'POST',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      headers: Object.assign({'Content-Type': 'application/x-www-form-urlencoded'}, authHeaders()),
       body: 'pk=' + encodeURIComponent(_pk) + '&pk_val=' + encodeURIComponent(pkVal) + '&col=' + encodeURIComponent(col) + '&value=' + encodeURIComponent(newVal)
     }).then(function(r) { return r.json(); })
       .then(function(d) {
@@ -229,6 +234,20 @@ document.addEventListener('click', function(e) {
   var td = e.target.closest('td.cell-editable');
   if (td && !td.querySelector('input,select')) startEdit(td);
 });
+
+// 拦截所有 data-api 表单，带上 Authorization 头
+document.addEventListener('submit', function(e) {
+  var form = e.target;
+  if (!form.dataset.api) return;
+  e.preventDefault();
+  var fd = new FormData(form);
+  var headers = Object.assign({}, authHeaders());
+  headers['Content-Type'] = 'application/x-www-form-urlencoded';
+  var body = new URLSearchParams(fd).toString();
+  fetch(form.action, { method: 'POST', headers: headers, body: body })
+    .then(function(r) { return r.url || r.text(); })
+    .then(function(url) { window.location.href = url || form.action; });
+});
 </script>
 </body>
 </html>"""
@@ -243,7 +262,7 @@ def _render_table(table, cols, rows, total, page, pk_col, edit_row=None):
     if edit_row is not None:
         content += '<div class="edit-panel">'
         content += f'<h2>{"编辑行" if edit_row else "新增行"}</h2>'
-        content += f'<form method="post" action="/api/admin/{table}/save">'
+        content += f'<form method="post" action="/api/admin/{table}/save" data-api>'
         if edit_row:
             for c in cols:
                 val = edit_row.get(c)
@@ -292,7 +311,7 @@ def _render_table(table, cols, rows, total, page, pk_col, edit_row=None):
         content += f'<div class="table-actions">'
         pk_val = row.get(pk_col)
         content += f'<a href="/api/admin?table={table}&page={page}&edit={escape(pk_val)}" class="btn btn-xs btn-primary">✏️</a> '
-        content += f'<form method="post" action="/api/admin/{table}/delete" style="display:inline">'
+        content += f'<form method="post" action="/api/admin/{table}/delete" style="display:inline" data-api'>
         content += f'<input type="hidden" name="pk" value="{pk_col}">'
         content += f'<input type="hidden" name="pk_val" value="{escape(pk_val)}">'
         content += f'<input type="hidden" name="page" value="{page}">'
