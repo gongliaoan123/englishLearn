@@ -311,7 +311,7 @@ def _render_table(table, cols, rows, total, page, pk_col, edit_row=None):
         content += f'<div class="table-actions">'
         pk_val = row.get(pk_col)
         content += f'<a href="/api/admin?table={table}&page={page}&edit={escape(pk_val)}" class="btn btn-xs btn-primary">✏️</a> '
-        content += f'<form method="post" action="/api/admin/{table}/delete" style="display:inline" data-api'>
+        content += f"<form method='post' action='/api/admin/{table}/delete' style='display:inline' data-api>"
         content += f'<input type="hidden" name="pk" value="{pk_col}">'
         content += f'<input type="hidden" name="pk_val" value="{escape(pk_val)}">'
         content += f'<input type="hidden" name="page" value="{page}">'
