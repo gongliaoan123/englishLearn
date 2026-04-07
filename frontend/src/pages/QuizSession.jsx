@@ -4,10 +4,10 @@ import { useQuiz } from '../contexts/QuizContext'
 import QuestionCard from '../components/QuestionCard'
 import { api } from '../api'
 
-function StartScreen({ startQuiz, startQuizFromWrong, TOTAL }) {
-  const [tab, setTab] = useState('all')
+function StartScreen({ startQuiz, startQuizFromWrong }) {
+  const [mode, setMode] = useState(null)  // null | 'bank' | 'wrong'
   const [tags, setTags] = useState([])
-  const [selected, setSelected] = useState(new Set())
+  const [selectedTags, setSelectedTags] = useState(new Set())
   const [loading, setLoading] = useState(true)
   const [tagDropdownOpen, setTagDropdownOpen] = useState(false)
   const [tagSearch, setTagSearch] = useState('')
@@ -16,6 +16,8 @@ function StartScreen({ startQuiz, startQuizFromWrong, TOTAL }) {
   const [total, setTotal] = useState(10)
   const [customTotal, setCustomTotal] = useState('')
   const [useCustom, setUseCustom] = useState(false)
+  const [srcPublic, setSrcPublic] = useState(true)
+  const [srcMine, setSrcMine] = useState(true)
 
   useEffect(() => {
     api.listTags().then(res => {
@@ -41,10 +43,13 @@ function StartScreen({ startQuiz, startQuizFromWrong, TOTAL }) {
   async function handleStart() {
     setStarting(true)
     try {
-      if (tab === 'wrong') {
+      if (mode === 'wrong') {
         await startQuizFromWrong(effectiveTotal)
       } else {
-        await startQuiz(tab === 'tag' ? [...selected] : [], effectiveTotal)
+        const sources = []
+        if (srcPublic) sources.push('public')
+        if (srcMine) sources.push('mine')
+        await startQuiz([...selectedTags], effectiveTotal, sources)
       }
     } catch (err) {
       alert(err.message)
@@ -52,34 +57,137 @@ function StartScreen({ startQuiz, startQuizFromWrong, TOTAL }) {
     }
   }
 
-  const TABS = [
-    { key: 'all', label: '全部题目' },
-    { key: 'tag', label: '按标签' },
-    { key: 'wrong', label: '错题本' },
-  ]
-
   const QUICK_TOTALS = [5, 10, 15, 20]
 
+  // ---- 步骤1：选择出题方式 ----
+  if (mode === null) {
+    return (
+      <div style={{ paddingTop: 40, textAlign: 'center' }}>
+        <h2>✏️ 开始测试</h2>
+        <p style={{ color: '#666', marginBottom: 32 }}>选择出题方式</p>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 16, flexWrap: 'wrap' }}>
+          <div onClick={() => setMode('bank')}
+            style={{ width: 200, padding: '24px 16px', border: '2px solid #E5E7EB', borderRadius: 16, cursor: 'pointer', textAlign: 'center', transition: 'all 0.15s', background: '#fff' }}
+            onMouseEnter={e => e.currentTarget.style.borderColor = '#3B82F6'}
+            onMouseLeave={e => e.currentTarget.style.borderColor = '#E5E7EB'}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>📚</div>
+            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>从题库出题</div>
+            <div style={{ fontSize: 13, color: '#666' }}>从公共题库或我的题库随机出题</div>
+          </div>
+          <div onClick={() => setMode('wrong')}
+            style={{ width: 200, padding: '24px 16px', border: '2px solid #E5E7EB', borderRadius: 16, cursor: 'pointer', textAlign: 'center', transition: 'all 0.15s', background: '#fff' }}
+            onMouseEnter={e => e.currentTarget.style.borderColor = '#3B82F6'}
+            onMouseLeave={e => e.currentTarget.style.borderColor = '#E5E7EB'}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>❌</div>
+            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>从错题本出题</div>
+            <div style={{ fontSize: 13, color: '#666' }}>从我的错题中随机抽取练习</div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ---- 步骤2：配置出题参数 ----
   return (
     <div style={{ paddingTop: 40, textAlign: 'center' }}>
       <h2>✏️ 开始测试</h2>
-      <p style={{ color: '#666' }}>每次练习</p>
 
-      {/* Tab 切换 */}
-      <div style={{ display: 'inline-flex', justifyContent: 'center', gap: 0, marginTop: 20, border: '1px solid #E5E7EB', borderRadius: 10, padding: 3 }}>
-        {TABS.map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)}
+      {/* 切换出题方式 */}
+      <div style={{ display: 'inline-flex', justifyContent: 'center', gap: 0, marginTop: 16, border: '1px solid #E5E7EB', borderRadius: 10, padding: 3 }}>
+        {[
+          { key: 'bank', label: '从题库出题' },
+          { key: 'wrong', label: '从错题本出题' },
+        ].map(t => (
+          <button key={t.key} onClick={() => setMode(t.key)}
             style={{ padding: '6px 20px', borderRadius: 8, fontSize: 13, cursor: 'pointer',
-              background: tab === t.key ? '#3B82F6' : '#fff',
-              color: tab === t.key ? '#fff' : '#374151',
+              background: mode === t.key ? '#3B82F6' : '#fff',
+              color: mode === t.key ? '#fff' : '#374151',
               border: 'none', transition: 'all 0.15s' }}>
             {t.label}
           </button>
         ))}
       </div>
 
+      {/* ---- 题库出题配置 ---- */}
+      {mode === 'bank' && (
+        <>
+          {/* 题库来源多选 */}
+          <div style={{ marginTop: 20, display: 'flex', justifyContent: 'center', gap: 12, alignItems: 'center' }}>
+            <span style={{ fontSize: 13, color: '#666' }}>题库来源：</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontSize: 13 }}>
+              <input type="checkbox" checked={srcPublic} onChange={e => setSrcPublic(e.target.checked)} style={{ cursor: 'pointer' }} />
+              公共题库
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontSize: 13 }}>
+              <input type="checkbox" checked={srcMine} onChange={e => setSrcMine(e.target.checked)} style={{ cursor: 'pointer' }} />
+              我的题库
+            </label>
+          </div>
+
+          {/* 标签筛选 */}
+          {!loading && tags.length > 0 && (
+            <div style={{ maxWidth: 500, margin: '16px auto 0', display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
+              {selectedTags.size > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center' }}>
+                  {[...selectedTags].map(tag => (
+                    <span key={tag} style={{ background: '#3B82F6', color: '#fff', padding: '3px 8px', borderRadius: 16, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      {tag}
+                      <button onClick={() => setSelectedTags(prev => { const s = new Set(prev); s.delete(tag); return s })}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#BFDBFE', fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
+                    </span>
+                  ))}
+                  <button onClick={() => setSelectedTags(new Set())} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 12 }}>清除</button>
+                </div>
+              )}
+              <div style={{ position: 'relative' }} ref={tagDropdownRef}>
+                <button onClick={() => setTagDropdownOpen(v => !v)}
+                  style={{ padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer',
+                    background: selectedTags.size > 0 ? '#EFF6FF' : '#fff',
+                    color: selectedTags.size > 0 ? '#1D4ED8' : '#374151',
+                    border: selectedTags.size > 0 ? '1px solid #BFDBFE' : '1px solid #D1D5DB' }}>
+                  🏷️ 按标签筛选 {selectedTags.size > 0 ? `(${selectedTags.size})` : ''} ▾
+                </button>
+                {tagDropdownOpen && (
+                  <div style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
+                    marginTop: 4, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10,
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 50,
+                    minWidth: 220, maxHeight: 280, overflowY: 'auto', padding: '8px 0', textAlign: 'left' }}>
+                    <div style={{ padding: '4px 12px 8px', borderBottom: '1px solid #F3F4F6' }}>
+                      <input value={tagSearch} onChange={e => setTagSearch(e.target.value)}
+                        placeholder="搜索标签..." autoFocus
+                        style={{ width: '100%', border: 'none', outline: 'none', fontSize: 13, padding: '2px 0', boxSizing: 'border-box' }} />
+                    </div>
+                    {[...selectedTags].map(tag => (
+                      <div key={tag} onClick={() => setSelectedTags(prev => { const s = new Set(prev); s.delete(tag); return s })}
+                        style={{ padding: '7px 12px', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, color: '#1D4ED8', background: '#EFF6FF' }}>
+                        <span style={{ color: '#3B82F6', fontWeight: 700, width: 16 }}>✓</span> {tag}
+                      </div>
+                    ))}
+                    {[...tags].filter(t => !selectedTags.has(t.name) && t.name.includes(tagSearch)).map(t => (
+                      <div key={t.id} onClick={() => setSelectedTags(prev => new Set([...prev, t.name]))}
+                        style={{ padding: '7px 12px', fontSize: 13, cursor: 'pointer', color: '#374151' }}>
+                        {t.name}
+                      </div>
+                    ))}
+                    {[...tags].filter(t => !selectedTags.has(t.name) && !t.name.includes(tagSearch)).length > 0 && tagSearch && (
+                      <div style={{ padding: '6px 12px', fontSize: 12, color: '#9CA3AF' }}>无匹配结果</div>
+                    )}
+                  </div>
+                )}
+              </div>
+              {selectedTags.size > 0 && <p style={{ fontSize: 13, color: '#3B82F6' }}>从 {selectedTags.size} 个标签出题</p>}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ---- 错题本说明 ---- */}
+      {mode === 'wrong' && (
+        <p style={{ marginTop: 20, fontSize: 13, color: '#666' }}>自动从错题本随机抽取题目练习</p>
+      )}
+
       {/* 题目数量选择 */}
-      <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+      <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ fontSize: 13, color: '#666' }}>题目数量：</span>
           {QUICK_TOTALS.map(n => (
@@ -106,72 +214,13 @@ function StartScreen({ startQuiz, startQuizFromWrong, TOTAL }) {
         <span style={{ fontSize: 12, color: '#9CA3AF' }}>共 {effectiveTotal} 道题</span>
       </div>
 
-      {/* 标签筛选内容 */}
-      {tab === 'tag' && !loading && tags.length > 0 && (
-        <div style={{ maxWidth: 500, margin: '16px auto 0', display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
-          {selected.size > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center' }}>
-              {[...selected].map(tag => (
-                <span key={tag} style={{ background: '#3B82F6', color: '#fff', padding: '3px 8px', borderRadius: 16, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
-                  {tag}
-                  <button onClick={() => setSelected(prev => { const s = new Set(prev); s.delete(tag); return s })}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#BFDBFE', fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
-                </span>
-              ))}
-              <button onClick={() => setSelected(new Set())} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 12 }}>清除</button>
-            </div>
-          )}
-          <div style={{ position: 'relative' }} ref={tagDropdownRef}>
-            <button onClick={() => setTagDropdownOpen(v => !v)}
-              style={{ padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer',
-                background: selected.size > 0 ? '#EFF6FF' : '#fff',
-                color: selected.size > 0 ? '#1D4ED8' : '#374151',
-                border: selected.size > 0 ? '1px solid #BFDBFE' : '1px solid #D1D5DB' }}>
-              🏷️ 选择标签 {selected.size > 0 ? `(${selected.size})` : ''} ▾
-            </button>
-            {tagDropdownOpen && (
-              <div style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
-                marginTop: 4, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10,
-                boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 50,
-                minWidth: 220, maxHeight: 280, overflowY: 'auto', padding: '8px 0', textAlign: 'left' }}>
-                <div style={{ padding: '4px 12px 8px', borderBottom: '1px solid #F3F4F6' }}>
-                  <input value={tagSearch} onChange={e => setTagSearch(e.target.value)}
-                    placeholder="搜索标签..." autoFocus
-                    style={{ width: '100%', border: 'none', outline: 'none', fontSize: 13, padding: '2px 0', boxSizing: 'border-box' }} />
-                </div>
-                {[...selected].map(tag => (
-                  <div key={tag} onClick={() => setSelected(prev => { const s = new Set(prev); s.delete(tag); return s })}
-                    style={{ padding: '7px 12px', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, color: '#1D4ED8', background: '#EFF6FF' }}>
-                    <span style={{ color: '#3B82F6', fontWeight: 700, width: 16 }}>✓</span> {tag}
-                  </div>
-                ))}
-                {[...tags].filter(t => !selected.has(t.name) && t.name.includes(tagSearch)).map(t => (
-                  <div key={t.id} onClick={() => setSelected(prev => new Set([...prev, t.name]))}
-                    style={{ padding: '7px 12px', fontSize: 13, cursor: 'pointer', color: '#374151' }}>
-                    {t.name}
-                  </div>
-                ))}
-                {[...tags].filter(t => !selected.has(t.name) && !t.name.includes(tagSearch)).length > 0 && tagSearch && (
-                  <div style={{ padding: '6px 12px', fontSize: 12, color: '#9CA3AF' }}>无匹配结果</div>
-                )}
-              </div>
-            )}
-          </div>
-          {selected.size > 0 && <p style={{ fontSize: 13, color: '#3B82F6' }}>从 {selected.size} 个标签出题</p>}
-        </div>
-      )}
-
-      {tab === 'wrong' && (
-        <p style={{ marginTop: 16, fontSize: 13, color: '#666' }}>自动从错题本随机抽取题目练习</p>
-      )}
-
       <div style={{ marginTop: 28, textAlign: 'center' }}>
         <button
           onClick={handleStart}
           disabled={starting}
           style={{ padding: '12px 40px', fontSize: 16, background: '#3B82F6', color: '#fff', border: 'none', borderRadius: 8, cursor: starting ? 'not-allowed' : 'pointer', opacity: starting ? 0.6 : 1 }}
         >
-          {starting ? '加载中...' : tab === 'wrong' ? '🗂️ 错题本练习 →' : '开始测试 →'}
+          {starting ? '加载中...' : '开始测试 →'}
         </button>
       </div>
     </div>
@@ -276,7 +325,7 @@ export default function QuizSession() {
   }, [resetQuiz])
 
   if (!sessionId) {
-    return <StartScreen startQuiz={startQuiz} startQuizFromWrong={startQuizFromWrong} TOTAL={sessionTotal} />
+    return <StartScreen startQuiz={startQuiz} startQuizFromWrong={startQuizFromWrong} />
   }
 
   if (!current) {

@@ -21,8 +21,8 @@ export function QuizProvider({ children }) {
   const displayPos = currentPos + 1  // 1-indexed
 
   // 启动测试
-  const startQuiz = useCallback(async (tags = [], total = 10) => {
-    const res = await api.startQuiz(tags, total)
+  const startQuiz = useCallback(async (tags = [], total = 10, sources = []) => {
+    const res = await api.startQuiz(tags, total, sources)
     setSessionId(res.session_id)
     setSessionTotal(res.total)
     setQuestions([])

@@ -17,6 +17,7 @@ class QuestionResponse(BaseModel):
     docx_filename: Optional[str]
     tags: list[str]
     source: str
+    user_id: Optional[int]  # NULL=公共题库
 
     class Config:
         from_attributes = True
@@ -48,6 +49,7 @@ class QuestionUpdate(BaseModel):
 class QuizStartRequest(BaseModel):
     tags: list[str] = []   # filter by tags; empty = all tags
     total: int | None = None  # number of questions; defaults to 10
+    sources: list[str] = []  # "public" | "mine"; empty = all
 
 
 class QuizStartResponse(BaseModel):

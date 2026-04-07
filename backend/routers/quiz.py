@@ -10,8 +10,8 @@ from schemas import (
 from services.mastery_tracker import record_answer
 from services.session_manager import (
     start_session, start_session_from_wrong, mark_used, get_used_ids,
-    record_correct, get_correct_count, end_session, get_session_tags, get_session_wrong_ids,
-    get_session_total, get_session_user_id,
+    record_correct, get_correct_count, end_session,
+    get_session_total, get_session_user_id, get_session_pool,
 )
 from middleware.auth import get_current_user_id
 
@@ -28,39 +28,49 @@ def get_db():
 @router.post("/start", response_model=QuizStartResponse)
 def start_quiz(request: Request, body: QuizStartRequest | None = None, db: Session = Depends(get_db)):
     user_id = get_current_user_id(request)
-    tags = body.tags if body else []
-    total = (body.total if body and body.total is not None else 10)
+    body = body or QuizStartRequest()
+    sources = body.sources or []
+    tags = body.tags or []
+    total = body.total or 10
+
     query = db.query(Question)
+    # 来源过滤
+    if sources == ["mine"]:
+        query = query.filter(Question.user_id == user_id)
+    elif sources == ["public"]:
+        query = query.filter(Question.user_id == None)
+    elif not sources or sources == ["public", "mine"] or sources == ["mine", "public"]:
+        # 公共 + 个人的
+        from sqlalchemy import or_
+        query = query.filter(or_(Question.user_id == None, Question.user_id == user_id))
+    # 标签过滤
     if tags:
-        tag_ids = db.query(Tag.id).filter(Tag.name.in_(tags)).subquery()
-        qids = db.query(QuestionTag.question_id).filter(QuestionTag.tag_id.in_(tag_ids)).subquery()
-        query = query.filter(Question.id.in_(qids))
-    available = query.count()
-    if available == 0:
-        raise HTTPException(status_code=400, detail="No questions in database. Import questions first.")
-    session_id = start_session(tags, total, user_id)
+        tag_objs = db.query(Tag).filter(Tag.name.in_(tags)).all()
+        if tag_objs:
+            tag_ids = [t.id for t in tag_objs]
+            qids = db.query(QuestionTag.question_id).filter(QuestionTag.tag_id.in_(tag_ids)).subquery()
+            query = query.filter(Question.id.in_(qids))
+
+    candidates = query.all()
+    if not candidates:
+        raise HTTPException(status_code=400, detail="题库为空，请先导入题目")
+    pool = [q.id for q in candidates]
+    session_id = start_session(pool, total, user_id)
     return QuizStartResponse(session_id=session_id, total=total)
 
 
 @router.post("/next", response_model=QuizNextResponse)
 def next_question(session_id: str, current: int = 1, db: Session = Depends(get_db)):
     used_ids = get_used_ids(session_id)
-    tags = get_session_tags(session_id)
-    wrong_ids = get_session_wrong_ids(session_id)
-    query = db.query(Question).filter(Question.id.notin_(used_ids))
-    if wrong_ids:
-        # 错题本出题模式：只从错题本中选
-        query = query.filter(Question.id.in_(wrong_ids))
-    elif tags:
-        tag_objs = db.query(Tag).filter(Tag.name.in_(tags)).all()
-        if tag_objs:
-            tag_id_list = [t.id for t in tag_objs]
-            qids = db.query(QuestionTag.question_id).filter(QuestionTag.tag_id.in_(tag_id_list)).subquery()
-            query = query.filter(Question.id.in_(qids))
-    candidates = query.all()
-    if not candidates:
+    pool = get_session_pool(session_id)
+    # 从 pool 中排除已用过的
+    available_ids = [qid for qid in pool if qid not in used_ids]
+    if not available_ids:
         raise HTTPException(status_code=400, detail="No more questions available")
-    q = random.choice(candidates)
+    qid = random.choice(available_ids)
+    q = db.query(Question).filter(Question.id == qid).first()
+    if not q:
+        raise HTTPException(status_code=400, detail="Question not found")
     mark_used(session_id, q.id)
     session_total = get_session_total(session_id)
     return QuizNextResponse(

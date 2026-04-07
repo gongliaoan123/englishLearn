@@ -42,8 +42,8 @@ export const api = {
   // Questions
   importDocx: (file) =>
     request('POST', '/questions/import', file),
-  listQuestions: (page = 1, tag = null) =>
-    request('GET', `/questions?page=${page}${tag ? `&tag=${encodeURIComponent(tag)}` : ''}`),
+  listQuestions: (page = 1, tag = null, scope = 'all') =>
+    request('GET', `/questions?page=${page}${tag ? `&tag=${encodeURIComponent(tag)}` : ''}&scope=${scope}`),
   createQuestion: (body) =>
     request('POST', '/questions', body),
   updateQuestion: (id, body) =>
@@ -54,8 +54,8 @@ export const api = {
     request('DELETE', '/questions'),
 
   // Quiz
-  startQuiz: (tags = [], total = 10) =>
-    request('POST', '/quiz/start', { tags, total }),
+  startQuiz: (tags = [], total = 10, sources = []) =>
+    request('POST', '/quiz/start', { tags, total, sources }),
   startQuizFromWrong: (total = 10) =>
     request('POST', '/quiz/start-from-wrong', { total }),
   nextQuestion: (sessionId, current) =>

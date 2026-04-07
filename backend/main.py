@@ -15,6 +15,8 @@ with engine.connect() as conn:
     for col_def in [
         "ALTER TABLE questions ADD COLUMN explanation TEXT",
         "ALTER TABLE wrong_questions ADD COLUMN wrong_answer VARCHAR(1)",
+        "ALTER TABLE questions ADD COLUMN user_id INTEGER",
+        "ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0",
     ]:
         try:
             conn.execute(text(col_def))

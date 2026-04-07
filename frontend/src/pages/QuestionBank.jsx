@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { api } from '../api'
+import { useAuth } from '../contexts/AuthContext'
 
 const TOTAL_PAGES = (total) => Math.max(1, Math.ceil(total / 50))
 
@@ -261,6 +262,7 @@ function QuestionForm({ editing, initial, onSave, onCancel }) {
 }
 
 export default function QuestionBank() {
+  const { user } = useAuth()
   const [questions, setQuestions] = useState([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -273,6 +275,9 @@ export default function QuestionBank() {
   const [filterTags, setFilterTags] = useState(() => new Set())
   const [tagDropdownOpen, setTagDropdownOpen] = useState(false)
   const [tagSearch, setTagSearch] = useState('')
+  const [scope, setScope] = useState('all')  // 'all' | 'public' | 'mine'
+  const [importing, setImporting] = useState(false)
+  const importFileRef = useRef(null)
   const tagDropdownRef = useRef(null)
 
   useEffect(() => {
@@ -294,11 +299,11 @@ export default function QuestionBank() {
 
   useEffect(() => {
     setLoading(true)
-    api.listQuestions(page, filterTags.size > 0 ? [...filterTags].join(',') : null).then(res => {
+    api.listQuestions(page, filterTags.size > 0 ? [...filterTags].join(',') : null, scope).then(res => {
       setQuestions(res.questions)
       setTotal(res.total)
     }).catch(() => {}).finally(() => setLoading(false))
-  }, [page, filterTags])
+  }, [page, filterTags, scope])
 
   function handleClear() {
     if (!window.confirm(`确定要清空全部 ${total} 道题目吗？此操作不可恢复！`)) return
@@ -306,6 +311,29 @@ export default function QuestionBank() {
       setQuestions([])
       setTotal(0)
     }).catch(err => alert('清空失败：' + err.message))
+  }
+
+  function handleImportFile(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    if (!file.name.endsWith('.docx')) {
+      alert('只支持 .docx 文件')
+      return
+    }
+    setImporting(true)
+    const formData = new FormData()
+    formData.append('file', file)
+    api.importDocx(formData).then(res => {
+      alert(`成功导入 ${res.imported} 道题目`)
+      // 刷新列表并切到"我的题库"
+      setScope('mine')
+      setPage(1)
+      setFilterTags(new Set())
+      setSelected(new Set())
+    }).catch(err => alert('导入失败：' + err.message)).finally(() => {
+      setImporting(false)
+      if (importFileRef.current) importFileRef.current.value = ''
+    })
   }
 
   async function handleDeleteTag(tagId, tagName) {
@@ -337,7 +365,7 @@ export default function QuestionBank() {
       setQuestions(prev => prev.map(q => q.id === updated.id ? updated : q))
     } else {
       await api.createQuestion(body)
-      const res = await api.listQuestions(1)
+      const res = await api.listQuestions(1, null, scope)
       setQuestions(res.questions)
       setTotal(res.total)
       setPage(1)
@@ -393,20 +421,46 @@ export default function QuestionBank() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <h2>📚 题库</h2>
-          <p style={{ color: '#666', margin: '4px 0 0' }}>共 {total} 题</p>
+          <p style={{ color: '#666', margin: '4px 0 0' }}>共 {total} 题 {user?.is_admin ? '· 👑 管理员' : ''}</p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={startAdd}
-            style={{ padding: '8px 16px', background: '#3B82F6', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
-            ➕ 手动录入
-          </button>
-          {total > 0 && (
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          {(scope === 'mine' || (scope === 'public' && user?.is_admin)) && (
+            <button onClick={() => importFileRef.current?.click()} disabled={importing}
+              style={{ padding: '8px 16px', background: importing ? '#9CA3AF' : '#10B981', color: '#fff', border: 'none', borderRadius: 6, cursor: importing ? 'not-allowed' : 'pointer', fontSize: 13 }}>
+              {importing ? '⏳ 导入中...' : '📥 导入 docx'}
+            </button>
+          )}
+          {(scope === 'mine' || (scope === 'public' && user?.is_admin)) && (
+            <button onClick={startAdd}
+              style={{ padding: '8px 16px', background: '#3B82F6', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
+              ➕ 手动录入
+            </button>
+          )}
+          {total > 0 && user?.is_admin && (scope === 'mine' || scope === 'public') && (
             <button onClick={handleClear}
               style={{ padding: '8px 16px', background: '#EF4444', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
               🗑️ 清空题库
             </button>
           )}
+          <input ref={importFileRef} type="file" accept=".docx" style={{ display: 'none' }} onChange={handleImportFile} />
         </div>
+      </div>
+
+      {/* 题库来源 Tab */}
+      <div style={{ marginTop: 12, display: 'inline-flex', gap: 0, border: '1px solid #E5E7EB', borderRadius: 10, padding: 3 }}>
+        {[
+          { key: 'all', label: '全部' },
+          { key: 'public', label: '公共题库' },
+          { key: 'mine', label: '我的题库' },
+        ].map(t => (
+          <button key={t.key} onClick={() => { setScope(t.key); setPage(1); setFilterTags(new Set()); setSelected(new Set()) }}
+            style={{ padding: '6px 16px', borderRadius: 8, fontSize: 13, cursor: 'pointer',
+              background: scope === t.key ? '#3B82F6' : '#fff',
+              color: scope === t.key ? '#fff' : '#374151',
+              border: 'none', transition: 'all 0.15s' }}>
+            {t.label}
+          </button>
+        ))}
       </div>
 
       {/* 标签筛选栏：紧凑下拉多选 */}
@@ -593,14 +647,21 @@ export default function QuestionBank() {
                   </div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
-                  <button onClick={() => startEdit(q)}
-                    style={{ padding: '4px 12px', background: '#fff', color: '#3B82F6', border: '1px solid #3B82F6', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
-                    编辑
-                  </button>
-                  <button onClick={() => handleDeleteOne(q.id)} disabled={deleting}
-                    style={{ padding: '4px 12px', background: '#fff', color: '#EF4444', border: '1px solid #EF4444', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
-                    删除
-                  </button>
+                  {(q.user_id === user?.id || user?.is_admin) && (
+                    <>
+                      <button onClick={() => startEdit(q)}
+                        style={{ padding: '4px 12px', background: '#EFF6FF', color: '#2563EB', border: '1px solid #BFDBFE', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
+                        编辑
+                      </button>
+                      <button onClick={() => handleDeleteOne(q.id)} disabled={deleting}
+                        style={{ padding: '4px 12px', background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
+                        删除
+                      </button>
+                    </>
+                  )}
+                  {q.user_id === null && !user?.is_admin && scope !== 'mine' && (
+                    <span style={{ fontSize: 11, color: '#9CA3AF', textAlign: 'center', padding: '4px 0' }}>公共题库</span>
+                  )}
                 </div>
               </div>
           ))}
