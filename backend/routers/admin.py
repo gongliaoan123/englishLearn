@@ -1,13 +1,13 @@
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
-from sqlalchemy import text, inspect
+from fastapi import APIRouter, Request, Form
+from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlalchemy import text
 from database import engine
+import html
 
 router = APIRouter()
 
 
 def get_tables():
-    """获取所有表名"""
     with engine.connect() as conn:
         result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"))
         return [row[0] for row in result]
@@ -19,34 +19,29 @@ def get_table_columns(table: str):
         return [{'name': row[1], 'type': row[2]} for row in result]
 
 
+def get_primary_key(table: str):
+    with engine.connect() as conn:
+        result = conn.execute(text(f"PRAGMA table_info({table})"))
+        for row in result:
+            if row[5]:  # pk column
+                return row[1]
+        return None
+
+
 def get_table_rows(table: str, page: int = 1, page_size: int = 50):
     offset = (page - 1) * page_size
     with engine.connect() as conn:
-        count_result = conn.execute(text(f"SELECT COUNT(*) FROM {table}"))
-        total = count_result.scalar()
+        total = conn.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar()
         rows_result = conn.execute(text(f"SELECT * FROM {table} ORDER BY 1 LIMIT {page_size} OFFSET {offset}"))
         columns = list(rows_result.keys())
         rows = [dict(zip(columns, row)) for row in rows_result.fetchall()]
         return columns, rows, total
 
 
-TABLES_WITH_SENSITIVE = {'users', 'wrong_questions'}
-
-
-def format_value(v):
-    if v is None:
-        return '<span style="color:#aaa">NULL</span>'
-    s = str(v)
-    if len(s) > 100:
-        s = s[:100] + '...'
-    import html
-    return html.escape(s)
-
-
-def render_bool(v):
-    if v is None:
+def escape(s):
+    if s is None:
         return ''
-    return '✓' if v else '✗'
+    return html.escape(str(s))
 
 
 ADMIN_PAGE = """<!DOCTYPE html>
@@ -66,15 +61,20 @@ ADMIN_PAGE = """<!DOCTYPE html>
   .main { flex: 1; padding: 24px; overflow: auto; }
   h1 { font-size: 20px; margin-bottom: 16px; color: #1e293b; }
   .topbar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
-  .topbar span { color: #64748b; font-size: 13px; }
+  .topbar span { color: #64748b; font-size: 13px; white-space: nowrap; }
   .sql-form { display: flex; gap: 8px; flex: 1; }
-  .sql-input { flex: 1; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-family: monospace; font-size: 13px; }
-  .btn { padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; }
+  .sql-input { flex: 1; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-family: monospace; font-size: 13px; min-width: 0; }
+  .btn { padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; text-decoration: none; display: inline-block; text-align: center; }
   .btn-primary { background: #3b82f6; color: #fff; }
   .btn-primary:hover { background: #2563eb; }
+  .btn-success { background: #22c55e; color: #fff; }
+  .btn-success:hover { background: #16a34a; }
   .btn-danger { background: #ef4444; color: #fff; }
   .btn-danger:hover { background: #dc2626; }
+  .btn-secondary { background: #64748b; color: #fff; }
+  .btn-secondary:hover { background: #475569; }
   .btn-sm { padding: 4px 10px; font-size: 12px; }
+  .btn-xs { padding: 2px 8px; font-size: 11px; }
   table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
   th { background: #f8fafc; padding: 10px 12px; text-align: left; font-size: 12px; color: #64748b; font-weight: 600; border-bottom: 1px solid #e2e8f0; }
   td { padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #f1f5f9; max-width: 300px; word-break: break-all; vertical-align: top; }
@@ -89,8 +89,18 @@ ADMIN_PAGE = """<!DOCTYPE html>
   .msg-success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
   .msg-error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
   .info { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 12px 16px; margin-bottom: 16px; font-size: 13px; color: #1e40af; }
-  .col-actions { width: 80px; }
-  .col-id { width: 60px; }
+  .table-actions { display: flex; gap: 4px; }
+  /* Edit form */
+  .edit-panel { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 24px; margin-bottom: 16px; }
+  .edit-panel h2 { font-size: 16px; margin-bottom: 16px; color: #1e293b; }
+  .form-row { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+  .form-label { width: 160px; font-size: 13px; color: #64748b; padding-top: 8px; text-align: right; flex-shrink: 0; }
+  .form-field { flex: 1; }
+  .form-field input, .form-field select, .form-field textarea { width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; font-family: inherit; }
+  .form-field textarea { min-height: 80px; resize: vertical; }
+  .form-field input:disabled { background: #f1f5f9; color: #94a3b8; }
+  .form-actions { display: flex; gap: 8px; margin-top: 20px; padding-top: 16px; border-top: 1px solid #e2e8f0; }
+  .col-actions { width: 140px; }
 </style>
 </head>
 <body>
@@ -107,8 +117,107 @@ ADMIN_PAGE = """<!DOCTYPE html>
 </html>"""
 
 
+def _render_table(table, cols, rows, total, page, pk_col, edit_row=None):
+    page_size = 50
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    content = f'<div class="info">{table} 表 · 共 {total} 行</div>'
+
+    # Edit / New row form
+    if edit_row is not None:
+        content += '<div class="edit-panel">'
+        content += f'<h2>{"编辑行" if edit_row else "新增行"}</h2>'
+        content += f'<form method="post" action="/api/admin/{table}/save">'
+        if edit_row:
+            for c in cols:
+                val = edit_row.get(c)
+                val_str = '' if val is None else escape(val)
+                is_pk = (c == pk_col)
+                readonly = 'readonly' if is_pk else ''
+                disabled = 'disabled' if is_pk else ''
+                content += f'<div class="form-row">'
+                content += f'<div class="form-label">{c}</div>'
+                content += f'<div class="form-field">'
+                if 'BOOL' in str(get_col_type(table, c)).upper():
+                    checked = 'checked' if val else ''
+                    content += f'<select name="f_{c}"><option value="1" {"selected" if val == 1 else ""}>1 / true</option><option value="0" {"selected" if val == 0 else ""}>0 / false</option></select>'
+                else:
+                    content += f'<input name="f_{c}" value="{val_str}" {readonly}>'
+                if is_pk:
+                    content += f'<input type="hidden" name="f_{c}" value="{val_str}">'
+                content += f'</div></div>'
+            content += f'<input type="hidden" name="pk" value="{pk_col}">'
+            content += f'<input type="hidden" name="pk_val" value="{escape(edit_row.get(pk_col))}">'
+        else:
+            for c in cols:
+                content += f'<div class="form-row">'
+                content += f'<div class="form-label">{c}</div>'
+                content += f'<div class="form-field">'
+                content += f'<input name="f_{c}" value="">'
+                content += f'</div></div>'
+        content += '<div class="form-actions">'
+        content += '<button type="submit" class="btn btn-success">💾 保存</button>'
+        content += f'<a href="/api/admin?table={table}&page={page}" class="btn btn-secondary">取消</a>'
+        content += '</div></form></div>'
+
+    content += f'<div class="topbar">'
+    content += f'<a href="/api/admin?table={table}&page={page}&new=1" class="btn btn-primary">➕ 新增行</a>'
+    content += '</div>'
+
+    content += '<table><tr>'
+    content += '<th>操作</th>'
+    for c in cols:
+        content += f'<th>{c}</th>'
+    content += '</tr>'
+
+    for row in rows:
+        content += '<tr>'
+        content += '<td>'
+        content += f'<div class="table-actions">'
+        pk_val = row.get(pk_col)
+        content += f'<a href="/api/admin?table={table}&page={page}&edit={escape(pk_val)}" class="btn btn-xs btn-primary">✏️</a> '
+        content += f'<form method="post" action="/api/admin/{table}/delete" style="display:inline">'
+        content += f'<input type="hidden" name="pk" value="{pk_col}">'
+        content += f'<input type="hidden" name="pk_val" value="{escape(pk_val)}">'
+        content += f'<input type="hidden" name="page" value="{page}">'
+        content += f'<button type="submit" class="btn btn-xs btn-danger" onclick="return confirm(\'确定删除？\')">🗑️</button>'
+        content += '</form>'
+        content += '</div>'
+        content += '</td>'
+        for k, v in row.items():
+            if v is None:
+                content += '<td><span class="null">NULL</span></td>'
+            elif isinstance(v, bool):
+                cls = 'bool-true' if v else 'bool-false'
+                content += f'<td class="{cls}">{"✓" if v else "✗"}</td>'
+            else:
+                content += f'<td>{escape(v)}</td>'
+        content += '</tr>'
+    content += '</table>'
+
+    if total_pages > 1:
+        content += '<div class="pager">'
+        if page > 1:
+            content += f'<a href="/api/admin?table={table}&page={page-1}">← 上一页</a>'
+        content += f'<span>第 {page} / {total_pages} 页 · 共 {total} 行</span>'
+        if page < total_pages:
+            content += f'<a href="/api/admin?table={table}&page={page+1}">下一页 →</a>'
+        content += '</div>'
+    return content
+
+
+def get_col_type(table, col):
+    with engine.connect() as conn:
+        result = conn.execute(text(f"PRAGMA table_info({table})"))
+        for row in result:
+            if row[1] == col:
+                return row[2]
+    return 'TEXT'
+
+
 @router.get("/admin", response_class=HTMLResponse)
-async def admin_panel(request: Request, table: str = None, page: int = 1, sql: str = None, msg: str = None, error: str = None):
+async def admin_panel(request: Request, table: str = None, page: int = 1,
+                       sql: str = None, msg: str = None, error: str = None,
+                       edit: str = None, new: str = None):
     from middleware.auth import get_current_user_id
     user_id = get_current_user_id(request)
 
@@ -119,25 +228,21 @@ async def admin_panel(request: Request, table: str = None, page: int = 1, sql: s
     )
 
     content = ""
-
-    # 顶部 SQL 查询框
     content += f"""
     <h1>数据库管理</h1>
     <div class="topbar">
       <form class="sql-form" method="get" action="/api/admin">
-        <input name="table" value="{table or ''}" type="hidden">
-        <input name="sql" class="sql-input" placeholder="输入 SQL 语句（SELECT/UPDATE/DELETE），回车执行" value="{sql or ''}">
+        <input name="table" value="{escape(table)}" type="hidden">
+        <input name="sql" class="sql-input" placeholder="SQL（SELECT/UPDATE/DELETE/INSERT）" value="{escape(sql)}">
         <button type="submit" class="btn btn-primary">执行</button>
       </form>
-      <span>仅 SELECT 可查询结果，其他语句直接执行</span>
     </div>"""
 
     if msg:
-        content += f'<div class="msg msg-success">{msg}</div>'
+        content += f'<div class="msg msg-success">{escape(msg)}</div>'
     if error:
-        content += f'<div class="msg msg-error">{error}</div>'
+        content += f'<div class="msg msg-error">{escape(error)}</div>'
 
-    # 执行 SQL
     if sql:
         sql = sql.strip()
         if sql.lower().startswith('select'):
@@ -146,71 +251,92 @@ async def admin_panel(request: Request, table: str = None, page: int = 1, sql: s
                     result = conn.execute(text(sql))
                     cols = list(result.keys())
                     rows = result.fetchall()
-                    content += f'<div class="info">查询返回 {len(rows)} 行</div>'
-                    content += '<table><tr>'
-                    for c in cols:
-                        content += f'<th>{c}</th>'
+                content += f'<div class="info">查询返回 {len(rows)} 行</div>'
+                content += '<table><tr>'
+                content += '<th></th>'
+                for c in cols:
+                    content += f'<th>{c}</th>'
+                content += '</tr>'
+                for row in rows:
+                    content += '<tr><td></td>'
+                    for v in row:
+                        if v is None:
+                            content += '<td><span class="null">NULL</span></td>'
+                        elif isinstance(v, bool):
+                            cls = 'bool-true' if v else 'bool-false'
+                            content += f'<td class="{cls}">{"✓" if v else "✗"}</td>'
+                        else:
+                            content += f'<td>{escape(v)}</td>'
                     content += '</tr>'
-                    for row in rows:
-                        content += '<tr>'
-                        for v in row:
-                            if v is None:
-                                content += '<td><span class="null">NULL</span></td>'
-                            elif isinstance(v, bool):
-                                cls = 'bool-true' if v else 'bool-false'
-                                content += f'<td class="{cls}">{"✓" if v else "✗"}</td>'
-                            else:
-                                content += f'<td>{format_value(v)}</td>'
-                        content += '</tr>'
-                    content += '</table>'
+                content += '</table>'
             except Exception as e:
-                content += f'<div class="msg msg-error">SQL 错误: {e}</div>'
+                content += f'<div class="msg msg-error">SQL 错误: {escape(str(e))}</div>'
         else:
             try:
                 with engine.connect() as conn:
                     conn.execute(text(sql))
                     conn.commit()
-                count = conn.execute(text("SELECT ROW_COUNT()")).scalar()
-                content += f'<div class="msg msg-success">执行成功，影响行数（估计）: ~{count}</div>'
+                content += '<div class="msg msg-success">执行成功</div>'
             except Exception as e:
-                content += f'<div class="msg msg-error">执行失败: {e}</div>'
+                content += f'<div class="msg msg-error">执行失败: {escape(str(e))}</div>'
 
-    # 显示表内容
     elif table:
+        pk_col = get_primary_key(table)
         cols, rows, total = get_table_rows(table, page)
-        page_size = 50
-        total_pages = max(1, (total + page_size - 1) // page_size)
 
-        content += f'<div class="info">{table} 表 · 共 {total} 行</div>'
-        content += '<table><tr>'
-        for c in cols:
-            content += f'<th>{c}</th>'
-        content += '</tr>'
-        for row in rows:
-            content += '<tr>'
-            for k, v in row.items():
-                if v is None:
-                    content += '<td><span class="null">NULL</span></td>'
-                elif isinstance(v, bool):
-                    cls = 'bool-true' if v else 'bool-false'
-                    content += f'<td class="{cls}">{"✓" if v else "✗"}</td>'
-                else:
-                    content += f'<td>{format_value(v)}</td>'
-            content += '</tr>'
-        content += '</table>'
+        edit_row = None
+        if edit is not None:
+            pk_val = edit
+            with engine.connect() as conn:
+                result = conn.execute(text(f"SELECT * FROM {table} WHERE {pk_col}=?"), (pk_val,))
+                row = result.fetchone()
+            if row:
+                edit_row = dict(zip(cols, row))
 
-        if total_pages > 1:
-            content += '<div class="pager">'
-            if page > 1:
-                content += f'<a href="/api/admin?table={table}&page={page-1}">← 上一页</a>'
-            content += f'<span>第 {page} / {total_pages} 页 · 共 {total} 行</span>'
-            if page < total_pages:
-                content += f'<a href="/api/admin?table={table}&page={page+1}">下一页 →</a>'
-            content += '</div>'
+        if new == '1':
+            edit_row = {}
+
+        content += _render_table(table, cols, rows, total, page, pk_col, edit_row)
     else:
-        content += '<div class="info">← 选择左侧表名查看数据，或输入 SQL 直接查询</div>'
+        content += '<div class="info">← 选择左侧表名查看和管理数据</div>'
 
     return ADMIN_PAGE.replace('__SIDEBAR__', sidebar_links).replace('__CONTENT__', content)
+
+
+@router.post("/admin/{table}/save", response_class=RedirectResponse)
+async def save_row(table: str, request: Request,
+                    pk: str = Form(...), pk_val: str = Form(None)):
+    form = await request.form()
+    fields = {k[2:]: v for k, v in form.items() if k.startswith('f_')}
+
+    with engine.connect() as conn:
+        if pk_val is not None:
+            # UPDATE
+            set_clause = ', '.join(f"{k}=?" for k in fields if k != pk)
+            values = [v for k, v in fields.items() if k != pk]
+            values.append(pk_val)
+            sql = f"UPDATE {table} SET {set_clause} WHERE {pk}=?"
+            conn.execute(text(sql), values)
+            conn.commit()
+            msg = "更新成功"
+        else:
+            # INSERT
+            cols = ', '.join(fields.keys())
+            placeholders = ', '.join(['?'] * len(fields))
+            sql = f"INSERT INTO {table} ({cols}) VALUES ({placeholders})"
+            conn.execute(text(sql), list(fields.values()))
+            conn.commit()
+            msg = "新增成功"
+    return RedirectResponse(f"/api/admin?table={table}&msg={msg}", status_code=303)
+
+
+@router.post("/admin/{table}/delete", response_class=RedirectResponse)
+async def delete_row(table: str, request: Request,
+                     pk: str = Form(...), pk_val: str = Form(...), page: int = Form(1)):
+    with engine.connect() as conn:
+        conn.execute(text(f"DELETE FROM {table} WHERE {pk}=?"), (pk_val,))
+        conn.commit()
+    return RedirectResponse(f"/api/admin?table={table}&page={page}&msg=删除成功", status_code=303)
 
 
 def _count(table):
