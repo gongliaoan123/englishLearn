@@ -36,7 +36,7 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def register_routers():
-    from routers import questions, quiz, analysis, similar, tags, auth
+    from routers import questions, quiz, analysis, similar, tags, auth, admin
     app.include_router(questions.router, prefix="/api/questions", tags=["questions"])
     app.include_router(quiz.router, prefix="/api/quiz", tags=["quiz"])
     app.include_router(analysis.router, prefix="/api/analysis", tags=["analysis"])
