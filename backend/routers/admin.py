@@ -345,7 +345,7 @@ async def admin_panel(request: Request, table: str = None, page: int = 1,
     user_id = get_current_user_id(request)
     if user_id is None:
         from fastapi.responses import RedirectResponse
-        return RedirectResponse('/login', status_code=302)
+        return HTMLResponse('<html><body style="font-family:sans-serif;padding:40px;text-align:center"><h1>请先登录</h1><p>管理员页面需要先登录</p></body></html>', status_code=401)
     if not _check_admin(request):
         return HTMLResponse('<html><body style="font-family:sans-serif;padding:40px;text-align:center"><h1>权限不足</h1><p>仅管理员可访问此页面</p><a href="/">返回首页</a></body></html>', status_code=403)
 
