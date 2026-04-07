@@ -143,7 +143,7 @@ function fmtVal(v) {
   if (typeof v === 'boolean') return v ? '<span class="bool-true">✓</span>' : '<span class="bool-false">✗</span>';
   var s = String(v);
   if (s.length > 100) s = s.substring(0, 100) + '...';
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\\n/g,'<br>');
 }
 
 function startEdit(td) {
