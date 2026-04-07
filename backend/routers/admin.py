@@ -101,6 +101,14 @@ ADMIN_PAGE = """<!DOCTYPE html>
   .form-field input:disabled { background: #f1f5f9; color: #94a3b8; }
   .form-actions { display: flex; gap: 8px; margin-top: 20px; padding-top: 16px; border-top: 1px solid #e2e8f0; }
   .col-actions { width: 140px; }
+  /* Inline editable cells */
+  td.cell-editable { cursor: pointer; }
+  td.cell-editable:hover { background: #eff6ff; outline: 1px solid #bfdbfe; border-radius: 4px; }
+  td.cell-saving { opacity: 0.5; }
+  .cell-input { width: 100%; padding: 4px 8px; border: 1px solid #3b82f6; border-radius: 4px; font-size: 13px; font-family: inherit; outline: none; box-shadow: 0 0 0 2px rgba(59,130,246,0.2); }
+  .cell-msg { position: fixed; bottom: 20px; right: 20px; padding: 10px 16px; border-radius: 6px; font-size: 13px; z-index: 100; }
+  .cell-msg.ok { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+  .cell-msg.err { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
 </style>
 </head>
 <body>
@@ -113,6 +121,100 @@ ADMIN_PAGE = """<!DOCTYPE html>
     __CONTENT__
   </div>
 </div>
+<script>
+var _table = __TABLE__, _pk = __PK__;
+
+function showMsg(text, ok) {
+  var m = document.createElement('div');
+  m.className = 'cell-msg ' + (ok ? 'ok' : 'err');
+  m.textContent = text;
+  document.body.appendChild(m);
+  setTimeout(function() { m.remove(); }, 2500);
+}
+
+function fmtVal(v) {
+  if (v === null || v === undefined) return '<span class="null">NULL</span>';
+  if (typeof v === 'boolean') return v ? '<span class="bool-true">✓</span>' : '<span class="bool-false">✗</span>';
+  var s = String(v);
+  if (s.length > 100) s = s.substring(0, 100) + '...';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+}
+
+function startEdit(td) {
+  if (td.querySelector('input,select')) return;
+  var col = td.dataset.col;
+  var pkVal = td.dataset.pk;
+  var oldVal = td.dataset.raw;
+  var isBool = td.dataset.bool === '1';
+  var isLong = String(oldVal || '').length > 100;
+  var input;
+
+  if (isBool) {
+    input = document.createElement('select');
+    input.className = 'cell-input';
+    [1,0].forEach(function(v) {
+      var opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = v ? '1 / true' : '0 / false';
+      if (String(oldVal) === String(v)) opt.selected = true;
+      input.appendChild(opt);
+    });
+  } else if (isLong) {
+    input = document.createElement('textarea');
+    input.className = 'cell-input';
+    input.value = oldVal || '';
+    input.style.minHeight = '60px';
+  } else {
+    input = document.createElement('input');
+    input.className = 'cell-input';
+    input.value = oldVal || '';
+  }
+
+  td.textContent = '';
+  td.appendChild(input);
+  input.focus();
+  if (input.select) input.select();
+
+  function save() {
+    var newVal = input.value;
+    if (newVal === oldVal) { td.innerHTML = fmtVal(oldVal); return; }
+    td.classList.add('cell-saving');
+    td.textContent = '...';
+    fetch('/api/admin/' + _table + '/cell-update', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: 'pk=' + encodeURIComponent(_pk) + '&pk_val=' + encodeURIComponent(pkVal) + '&col=' + encodeURIComponent(col) + '&value=' + encodeURIComponent(newVal)
+    }).then(function(r) { return r.json(); })
+      .then(function(d) {
+        td.classList.remove('cell-saving');
+        if (d.ok) {
+          td.innerHTML = fmtVal(d.value);
+          td.dataset.raw = (d.value === null ? '' : String(d.value));
+          showMsg('已保存', true);
+        } else {
+          td.innerHTML = fmtVal(oldVal);
+          showMsg('保存失败: ' + d.error, false);
+        }
+      })
+      .catch(function(e) {
+        td.classList.remove('cell-saving');
+        td.innerHTML = fmtVal(oldVal);
+        showMsg('网络错误', false);
+      });
+  }
+
+  input.addEventListener('blur', save);
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { td.innerHTML = fmtVal(oldVal); }
+  });
+}
+
+document.addEventListener('click', function(e) {
+  var td = e.target.closest('td.cell-editable');
+  if (td && !td.querySelector('input,select')) startEdit(td);
+});
+</script>
 </body>
 </html>"""
 
@@ -184,13 +286,19 @@ def _render_table(table, cols, rows, total, page, pk_col, edit_row=None):
         content += '</div>'
         content += '</td>'
         for k, v in row.items():
-            if v is None:
-                content += '<td><span class="null">NULL</span></td>'
+            is_pk = (k == pk_col)
+            if is_pk:
+                if v is None:
+                    content += '<td><span class="null">NULL</span></td>'
+                else:
+                    content += f'<td>{escape(v)}</td>'
+            elif v is None:
+                content += f'<td class="cell-editable" data-col="{escape(k)}" data-pk="{escape(pk_val)}" data-raw="" data-bool="0"><span class="null">NULL</span></td>'
             elif isinstance(v, bool):
                 cls = 'bool-true' if v else 'bool-false'
-                content += f'<td class="{cls}">{"✓" if v else "✗"}</td>'
+                content += f'<td class="cell-editable {cls}" data-col="{escape(k)}" data-pk="{escape(pk_val)}" data-raw="{escape(v)}" data-bool="1">{"✓" if v else "✗"}</td>'
             else:
-                content += f'<td>{escape(v)}</td>'
+                content += f'<td class="cell-editable" data-col="{escape(k)}" data-pk="{escape(pk_val)}" data-raw="{escape(v)}" data-bool="0">{escape(v)}</td>'
         content += '</tr>'
     content += '</table>'
 
@@ -300,7 +408,7 @@ async def admin_panel(request: Request, table: str = None, page: int = 1,
     else:
         content += '<div class="info">← 选择左侧表名查看和管理数据</div>'
 
-    return ADMIN_PAGE.replace('__SIDEBAR__', sidebar_links).replace('__CONTENT__', content)
+    return ADMIN_PAGE.replace('__SIDEBAR__', sidebar_links).replace('__CONTENT__', content).replace('__TABLE__', repr(table)).replace('__PK__', repr(pk_col))
 
 
 @router.post("/admin/{table}/save", response_class=RedirectResponse)
@@ -337,6 +445,26 @@ async def delete_row(table: str, request: Request,
         conn.execute(text(f"DELETE FROM {table} WHERE {pk}=:pk"), {"pk": pk_val})
         conn.commit()
     return RedirectResponse(f"/api/admin?table={table}&page={page}&msg=删除成功", status_code=303)
+
+
+@router.post("/admin/{table}/cell-update")
+async def cell_update(table: str, request: Request,
+                      pk: str = Form(...), pk_val: str = Form(...),
+                      col: str = Form(...), value: str = Form(...)):
+    from fastapi.responses import JSONResponse
+    # 空字符串转 NULL
+    final_val = None if value == '' else value
+    try:
+        with engine.connect() as conn:
+            conn.execute(
+                text(f"UPDATE {table} SET {col}=:val WHERE {pk}=:pk"),
+                {"val": final_val, "pk": pk_val}
+            )
+            conn.commit()
+        # 返回新值用于更新 UI
+        return JSONResponse({"ok": True, "value": final_val})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
 
 
 def _count(table):
