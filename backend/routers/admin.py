@@ -470,7 +470,7 @@ async def admin_panel(request: Request, table: str = None, page: int = 1,
     else:
         content += '<div class="info">← 选择左侧表名查看和管理数据</div>'
 
-    return ADMIN_PAGE.replace('__SIDEBAR__', sidebar_links).replace('__CONTENT__', content).replace('__TABLE__', repr(table)).replace('__PK__', repr(pk_col))
+    return ADMIN_PAGE.replace('__SIDEBAR__', sidebar_links).replace('__CONTENT__', content).replace('__TABLE__', repr(table) if table is not None else 'null').replace('__PK__', repr(pk_col) if pk_col is not None else 'null')
 
 
 @router.post("/admin/{table}/save", response_class=RedirectResponse)
