@@ -419,20 +419,21 @@ async def save_row(table: str, request: Request,
 
     with engine.connect() as conn:
         if pk_val is not None:
-            # UPDATE
-            set_clause = ', '.join(f"{k}=?" for k in fields if k != pk)
-            values = [v for k, v in fields.items() if k != pk]
-            values.append(pk_val)
-            sql = f"UPDATE {table} SET {set_clause} WHERE {pk}=?"
-            conn.execute(text(sql), values)
+            # UPDATE - use named params
+            set_clause = ', '.join(f"{k}=:v{i}" for i, k in enumerate(fields) if k != pk)
+            params = {f"v{i}": v for i, (k, v) in enumerate(fields.items()) if k != pk}
+            params['pk'] = pk_val
+            sql = f"UPDATE {table} SET {set_clause} WHERE {pk}=:pk"
+            conn.execute(text(sql), params)
             conn.commit()
             msg = "更新成功"
         else:
-            # INSERT
+            # INSERT - use named params
             cols = ', '.join(fields.keys())
-            placeholders = ', '.join(['?'] * len(fields))
+            placeholders = ', '.join(f":v{i}" for i in range(len(fields)))
+            params = {f"v{i}": v for i, v in enumerate(fields.values())}
             sql = f"INSERT INTO {table} ({cols}) VALUES ({placeholders})"
-            conn.execute(text(sql), list(fields.values()))
+            conn.execute(text(sql), params)
             conn.commit()
             msg = "新增成功"
     return RedirectResponse(f"/api/admin?table={table}&msg={msg}", status_code=303)
