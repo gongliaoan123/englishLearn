@@ -41,7 +41,7 @@ def get_table_rows(table: str, page: int = 1, page_size: int = 50):
 def escape(s):
     if s is None:
         return ''
-    return html.escape(str(s))
+    return html.escape(str(s)).replace('\\', '\\\\').replace('"', '&quot;')
 
 
 ADMIN_PAGE = """<!DOCTYPE html>
