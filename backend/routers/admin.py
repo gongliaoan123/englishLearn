@@ -97,10 +97,10 @@ ADMIN_PAGE = """<!DOCTYPE html>
 <div class="layout">
   <div class="sidebar">
     <h2>📊 数据库</h2>
-    {sidebar}
+    __SIDEBAR__
   </div>
   <div class="main">
-    {content}
+    __CONTENT__
   </div>
 </div>
 </body>
@@ -210,7 +210,7 @@ async def admin_panel(request: Request, table: str = None, page: int = 1, sql: s
     else:
         content += '<div class="info">← 选择左侧表名查看数据，或输入 SQL 直接查询</div>'
 
-    return ADMIN_PAGE.format(sidebar=sidebar_links, content=content)
+    return ADMIN_PAGE.replace('__SIDEBAR__', sidebar_links).replace('__CONTENT__', content)
 
 
 def _count(table):
