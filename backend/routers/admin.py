@@ -351,6 +351,12 @@ async def admin_panel(request: Request, table: str = None, page: int = 1,
     if error:
         content += f'<div class="msg msg-error">{escape(error)}</div>'
 
+    # pk_col 提前定义，SQL 查询分支也需要
+    if table:
+        pk_col = get_primary_key(table)
+    else:
+        pk_col = None
+
     if sql:
         sql = sql.strip()
         if sql.lower().startswith('select'):
@@ -389,7 +395,6 @@ async def admin_panel(request: Request, table: str = None, page: int = 1,
                 content += f'<div class="msg msg-error">执行失败: {escape(str(e))}</div>'
 
     elif table:
-        pk_col = get_primary_key(table)
         cols, rows, total = get_table_rows(table, page)
 
         edit_row = None
