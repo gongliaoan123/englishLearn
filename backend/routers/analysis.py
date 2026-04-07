@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from database import SessionLocal
@@ -6,6 +6,7 @@ from models import WrongQuestion, AIAnalysis, Question
 from schemas import AIAnalysisResponse, AnalysisConfirmRequest, SimilarQuestionsResponse, QuestionResponse
 from services.analysis_service import analyze_wrong_answer
 from services.tag_service import get_or_create_tags
+from middleware.auth import get_current_user_id
 
 router = APIRouter()
 
@@ -17,15 +18,25 @@ def get_db():
         db.close()
 
 
+def _wq_query(user_id, db):
+    """Base query for WrongQuestion filtered by user_id."""
+    q = db.query(WrongQuestion)
+    if user_id:
+        q = q.filter(WrongQuestion.user_id == user_id)
+    else:
+        q = q.filter(WrongQuestion.user_id == None)
+    return q
+
+
 @router.get("/{wrong_question_id}", response_model=AIAnalysisResponse)
-def get_analysis(wrong_question_id: int, db: Session = Depends(get_db)):
+def get_analysis(request: Request, wrong_question_id: int, db: Session = Depends(get_db)):
+    user_id = get_current_user_id(request)
     wq = db.query(WrongQuestion).filter(WrongQuestion.id == wrong_question_id).first()
-    if not wq:
-        raise HTTPException(status_code=404, detail="WrongQuestion not found")
+    if not wq or (user_id is not None and wq.user_id != user_id):
+        raise HTTPException(status_code=404, detail="错题不存在")
 
     analysis = db.query(AIAnalysis).filter(AIAnalysis.wrong_question_id == wrong_question_id).first()
     if not analysis:
-        # Auto-generate on first access
         q = wq.question
         result = analyze_wrong_answer(q.content, q.answer, wq.wrong_answer or q.answer, q.options)
         analysis = AIAnalysis(
@@ -55,44 +66,45 @@ def get_analysis(wrong_question_id: int, db: Session = Depends(get_db)):
 
 @router.post("/{wrong_question_id}/confirm", response_model=SimilarQuestionsResponse)
 def confirm_analysis(
+    request: Request,
     wrong_question_id: int,
     body: AnalysisConfirmRequest,
     db: Session = Depends(get_db),
 ):
+    user_id = get_current_user_id(request)
     wq = db.query(WrongQuestion).filter(WrongQuestion.id == wrong_question_id).first()
-    if not wq:
-        raise HTTPException(status_code=404, detail="WrongQuestion not found")
+    if not wq or (user_id is not None and wq.user_id != user_id):
+        raise HTTPException(status_code=404, detail="错题不存在")
 
     analysis = db.query(AIAnalysis).filter(AIAnalysis.wrong_question_id == wrong_question_id).first()
     if not analysis:
         raise HTTPException(status_code=400, detail="No analysis found for this wrong question")
 
-    # Update confirmed and tags
     analysis.confirmed = True
     tags_to_apply = body.tags if body.tags is not None else analysis.suggested_tags
     get_or_create_tags(db, wq.question, tags_to_apply)
-
     wq.status = "confirmed"
     db.commit()
 
-    # Frontend will call /api/similar separately — return empty for now
     return SimilarQuestionsResponse(questions=[], generated_count=0)
 
 
 @router.post("/{wrong_question_id}/reject")
-def reject_analysis(wrong_question_id: int, db: Session = Depends(get_db)):
+def reject_analysis(request: Request, wrong_question_id: int, db: Session = Depends(get_db)):
+    user_id = get_current_user_id(request)
     wq = db.query(WrongQuestion).filter(WrongQuestion.id == wrong_question_id).first()
-    if not wq:
-        raise HTTPException(status_code=404, detail="WrongQuestion not found")
+    if not wq or (user_id is not None and wq.user_id != user_id):
+        raise HTTPException(status_code=404, detail="错题不存在")
     wq.status = "confirmed"
     db.commit()
     return {"ok": True}
 
 
 @router.delete("/{wrong_question_id}")
-def delete_wrong_question(wrong_question_id: int, db: Session = Depends(get_db)):
+def delete_wrong_question(request: Request, wrong_question_id: int, db: Session = Depends(get_db)):
+    user_id = get_current_user_id(request)
     wq = db.query(WrongQuestion).filter(WrongQuestion.id == wrong_question_id).first()
-    if not wq:
+    if not wq or (user_id is not None and wq.user_id != user_id):
         raise HTTPException(status_code=404, detail="错题不存在")
     db.query(AIAnalysis).filter(AIAnalysis.wrong_question_id == wrong_question_id).delete(synchronize_session=False)
     db.query(WrongQuestion).filter(WrongQuestion.id == wrong_question_id).delete()
@@ -101,17 +113,23 @@ def delete_wrong_question(wrong_question_id: int, db: Session = Depends(get_db))
 
 
 @router.post("/clear")
-def clear_all_wrong_questions(db: Session = Depends(get_db)):
-    db.query(AIAnalysis).delete()
-    db.query(WrongQuestion).delete()
+def clear_all_wrong_questions(request: Request, db: Session = Depends(get_db)):
+    user_id = get_current_user_id(request)
+    wqs = _wq_query(user_id, db).all()
+    wq_ids = [wq.id for wq in wqs]
+    if wq_ids:
+        db.query(AIAnalysis).filter(AIAnalysis.wrong_question_id.in_(wq_ids)).delete(synchronize_session=False)
+    _wq_query(user_id, db).delete()
     db.commit()
     return {"ok": True}
 
 
 @router.get("")
-def list_wrong_questions(page: int = 1, page_size: int = 20, db: Session = Depends(get_db)):
-    total = db.query(WrongQuestion).count()
-    wqs = db.query(WrongQuestion).order_by(WrongQuestion.last_wrong_at.desc()) \
+def list_wrong_questions(request: Request, page: int = 1, page_size: int = 20, db: Session = Depends(get_db)):
+    user_id = get_current_user_id(request)
+    query = _wq_query(user_id, db)
+    total = query.count()
+    wqs = query.order_by(WrongQuestion.last_wrong_at.desc()) \
         .offset((page - 1) * page_size).limit(page_size).all()
     return {
         "items": [

@@ -5,6 +5,10 @@ async function request(method, path, body) {
     method,
     headers: {},
   }
+  const token = localStorage.getItem('token')
+  if (token) {
+    opts.headers['Authorization'] = `Bearer ${token}`
+  }
   if (body instanceof FormData) {
     opts.body = body
   } else if (body) {
@@ -12,6 +16,11 @@ async function request(method, path, body) {
     opts.body = JSON.stringify(body)
   }
   const res = await fetch(`${BASE}${path}`, opts)
+  if (res.status === 401) {
+    localStorage.removeItem('token')
+    window.location.href = '/login'
+    throw new Error('请先登录')
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     throw new Error(err.detail || 'Request failed')
@@ -20,6 +29,16 @@ async function request(method, path, body) {
 }
 
 export const api = {
+  // Auth
+  register: (username, password) =>
+    request('POST', '/auth/register', { username, password }),
+  login: (username, password) =>
+    request('POST', '/auth/login', { username, password }),
+  getMe: () =>
+    request('GET', '/auth/me'),
+  logout: () =>
+    request('POST', '/auth/logout'),
+
   // Questions
   importDocx: (file) =>
     request('POST', '/questions/import', file),

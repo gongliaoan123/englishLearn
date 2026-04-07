@@ -8,17 +8,21 @@ import uuid
 _sessions: dict[str, dict] = {}
 
 
-def start_session(tags: list[str] | None = None, total: int = 10) -> str:
+def start_session(tags: list[str] | None = None, total: int = 10, user_id: int | None = None) -> str:
     sid = str(uuid.uuid4())
-    _sessions[sid] = {"used_ids": [], "correct_count": 0, "tags": tags or [], "wrong_ids": [], "total": total}
+    _sessions[sid] = {"used_ids": [], "correct_count": 0, "tags": tags or [], "wrong_ids": [], "total": total, "user_id": user_id}
     return sid
 
 
-def start_session_from_wrong(wrong_ids: list[int], total: int = 10) -> str:
+def start_session_from_wrong(wrong_ids: list[int], total: int = 10, user_id: int | None = None) -> str:
     """Start a session that only uses questions from the wrong question bank."""
     sid = str(uuid.uuid4())
-    _sessions[sid] = {"used_ids": [], "correct_count": 0, "tags": [], "wrong_ids": wrong_ids, "total": total}
+    _sessions[sid] = {"used_ids": [], "correct_count": 0, "tags": [], "wrong_ids": wrong_ids, "total": total, "user_id": user_id}
     return sid
+
+
+def get_session_user_id(sid: str) -> int | None:
+    return _sessions.get(sid, {}).get("user_id")
 
 
 def get_session_total(sid: str) -> int:

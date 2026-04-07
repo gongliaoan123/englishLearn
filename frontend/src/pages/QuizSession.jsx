@@ -66,7 +66,7 @@ function StartScreen({ startQuiz, startQuizFromWrong, TOTAL }) {
       <p style={{ color: '#666' }}>每次练习</p>
 
       {/* Tab 切换 */}
-      <div style={{ display: 'flex', justifyContent: 'center', gap: 0, marginTop: 20, border: '1px solid #E5E7EB', borderRadius: 10, padding: 3, display: 'inline-flex' }}>
+      <div style={{ display: 'inline-flex', justifyContent: 'center', gap: 0, marginTop: 20, border: '1px solid #E5E7EB', borderRadius: 10, padding: 3 }}>
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             style={{ padding: '6px 20px', borderRadius: 8, fontSize: 13, cursor: 'pointer',
