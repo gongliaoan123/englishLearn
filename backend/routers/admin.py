@@ -127,7 +127,7 @@ ADMIN_PAGE = """<!DOCTYPE html>
 </style>
 </head>
 <body>
-<div class="layout">
+<div class="layout" id="layout" style="display:none">
   <div class="sidebar">
     <h2>📊 数据库</h2>
     __SIDEBAR__
@@ -151,6 +151,30 @@ function showMsg(text, ok) {
   document.body.appendChild(m);
   setTimeout(function() { m.remove(); }, 2500);
 }
+
+// Auth check: verify token + admin before showing content
+(function() {
+  var token = localStorage.getItem('token');
+  if (!token) {
+    document.getElementById('auth-overlay') || document.body.prepend(Object.assign(document.createElement('div'), {id:'auth-overlay',style:'position:fixed;inset:0;background:#fff;z-index:999;display:flex;align-items:center;justify-content:center;font-family:sans-serif'}));
+    document.getElementById('auth-overlay').innerHTML = '<div style="text-align:center;padding:40px"><h1 style="color:#333">请先登录</h1><p style="color:#666;margin:12px 0">管理员页面需要有效的登录状态</p><a href="/" style="color:#3b82f6">← 返回首页</a></div>';
+    return;
+  }
+  fetch('/api/auth/me', {headers: authHeaders()})
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.is_admin) {
+        document.getElementById('auth-overlay') || document.body.prepend(Object.assign(document.createElement('div'), {id:'auth-overlay',style:'position:fixed;inset:0;background:#fff;z-index:999;display:flex;align-items:center;justify-content:center;font-family:sans-serif'}));
+        document.getElementById('auth-overlay').innerHTML = '<div style="text-align:center;padding:40px"><h1 style="color:#333">权限不足</h1><p style="color:#666;margin:12px 0">仅管理员可访问此页面</p><a href="/" style="color:#3b82f6">← 返回首页</a></div>';
+        return;
+      }
+      document.getElementById('layout').style.display = '';
+    })
+    .catch(function() {
+      document.getElementById('auth-overlay') || document.body.prepend(Object.assign(document.createElement('div'), {id:'auth-overlay',style:'position:fixed;inset:0;background:#fff;z-index:999;display:flex;align-items:center;justify-content:center;font-family:sans-serif'}));
+      document.getElementById('auth-overlay').innerHTML = '<div style="text-align:center;padding:40px"><h1 style="color:#333">请先登录</h1><p style="color:#666;margin:12px 0">token无效或已过期</p><a href="/" style="color:#3b82f6">← 返回首页</a></div>';
+    });
+})();
 
 function fmtVal(v) {
   if (v === null || v === undefined) return '<span class="null">NULL</span>';
@@ -360,13 +384,7 @@ def get_col_type(table, col):
 async def admin_panel(request: Request, table: str = None, page: int = 1,
                        sql: str = None, msg: str = None, error: str = None,
                        edit: str = None, new: str = None):
-    from middleware.auth import get_current_user_id
-    user_id = get_current_user_id(request)
-    if user_id is None:
-        from fastapi.responses import RedirectResponse
-        return HTMLResponse('<html><body style="font-family:sans-serif;padding:40px;text-align:center"><h1>请先登录</h1><p>管理员页面需要先登录</p></body></html>', status_code=401)
-    if not _check_admin(request):
-        return HTMLResponse('<html><body style="font-family:sans-serif;padding:40px;text-align:center"><h1>权限不足</h1><p>仅管理员可访问此页面</p><a href="/">返回首页</a></body></html>', status_code=403)
+    # Auth is checked client-side via /api/auth/me after page loads
 
     tables = get_tables()
     sidebar_links = '\n'.join(
