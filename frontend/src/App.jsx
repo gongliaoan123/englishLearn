@@ -1,5 +1,5 @@
 import React from 'react'
-import { BrowserRouter, Routes, Route, Link, Navigate, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Link, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { QuizProvider } from './contexts/QuizContext'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import QuestionBank from './pages/QuestionBank'
@@ -27,11 +27,20 @@ function PublicRoute({ children }) {
 function NavBar() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const navStyle = (path) => ({
+    textDecoration: 'none',
+    color: location.pathname === path ? '#3B82F6' : '#64748b',
+    fontWeight: location.pathname === path ? 'bold' : 'normal',
+    paddingBottom: 4,
+    borderBottom: location.pathname === path ? '2px solid #3B82F6' : '2px solid transparent',
+    transition: 'color 0.15s, border-color 0.15s',
+  })
   return (
     <nav style={{ display: 'flex', gap: 16, padding: '16px 0', borderBottom: '1px solid #eee', alignItems: 'center', flexWrap: 'wrap' }}>
-      <Link to="/questions">📚 题库</Link>
-      <Link to="/quiz">✏️ 开始测试</Link>
-      <Link to="/wrong-log">❌ 错题本</Link>
+      <Link to="/questions" style={navStyle('/questions')}>📚 题库</Link>
+      <Link to="/quiz" style={navStyle('/quiz')}>✏️ 开始测试</Link>
+      <Link to="/wrong-log" style={navStyle('/wrong-log')}>❌ 错题本</Link>
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
         <span style={{ color: '#666', fontSize: 13 }}>👤 {user?.username}</span>
         <button
@@ -49,20 +58,7 @@ function HomeRedirect() {
   const { user, loading } = useAuth()
   if (loading) return <p style={{ paddingTop: 40, textAlign: 'center' }}>加载中...</p>
   if (!user) return <Navigate to="/login" replace />
-  return (
-    <div style={{ paddingTop: 40, textAlign: 'center' }}>
-      <p style={{ fontSize: 16, color: '#666' }}>欢迎回来，{user?.username}！</p>
-      <p style={{ marginTop: 16 }}>👇 开始学习</p>
-      <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginTop: 16 }}>
-        <button onClick={() => window.location.href = '/quiz'} style={{ padding: '10px 24px', background: '#3B82F6', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14 }}>
-          ✏️ 开始测试
-        </button>
-        <button onClick={() => window.location.href = '/questions'} style={{ padding: '10px 24px', background: '#fff', color: '#3B82F6', border: '1px solid #3B82F6', borderRadius: 8, cursor: 'pointer', fontSize: 14 }}>
-          📚 题库
-        </button>
-      </div>
-    </div>
-  )
+  return <Navigate to="/quiz" replace />
 }
 
 export default function App() {
