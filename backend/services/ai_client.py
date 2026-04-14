@@ -43,9 +43,9 @@ class AIClient:
             return response.choices[0].message.content
         elif self.provider == "minimax":
             # MiniMax uses OpenAI-compatible API
-            # Default model: abab6.5s-chat
+            # Model: MiniMax-M2.7
             response = self.client.chat.completions.create(
-                model="abab6.5s-chat",
+                model="MiniMax-M2.7",
                 messages=[
                     {"role": "system", "content": system},
                     {"role": "user", "content": user},

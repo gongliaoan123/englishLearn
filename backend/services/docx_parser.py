@@ -3,57 +3,24 @@ import json
 from docx import Document
 from services.ai_client import AIClient
 
-PARSE_SYSTEM = """You are a strict English MCQ parser. Given consecutive text lines from a .docx file, your job is to extract all valid multiple-choice questions.
+PARSE_SYSTEM = """You are a strict English MCQ parser. Extract ALL multiple-choice questions from the given text.
 
-## DOCUMENT STRUCTURE (important — read carefully)
+The input may contain a separator "---". Content BEFORE "---" is the question text.
+Content AFTER "---" is the answer key: starts with "N．AnswerLetter" then 【详解】explanation.
 
-Each question occupies a group of consecutive lines. A new question STARTS when you see a line matching these patterns:
-- Starts with a number: "1．" "1." "1、" "2." "2．" "2、" etc.
-- Starts with "（" followed by a year/nian: "（2023·中考）" "（2024·河北）" etc.
+Extract each question:
+- content: English question text (combine multi-line with \\n, preserve blanks as ________)
+- options: {"A": "option A", "B": "option B", "C": "option C", "D": "option D"}
+- answer: EXACTLY one letter: A, B, C, or D (extract from after ---)
+- explanation: the 【详解】text after the answer letter (extract from after ---)
 
-Within a question group, lines have these possible types:
-- **Question line(s)**: The English question text. May span 1-3 lines before the options appear.
-    - Look for lines ending with "?" (the question ends with a question mark)
-    - A question can have a follow-up answer line (e.g., "—It was introduced through the Silk Road.") before options appear.
-    - A question can have a BLANK: "Do you know ___________ ?" or "I wonder ________."
-- **Options**: Always start with "A" (A． A) followed by text. May be on separate lines or on ONE line separated by tabs/whitespace.
-    - The options line may have A, B, C, D all on one line separated by tabs, OR
-    - Each option on its own line starting with "A．" / "A)" etc.
-- **Answer**: Line starting with "【答案】" or "答案：" or "答：" followed by A/B/C/D
-- **Explanation**: Line starting with "【详解】" or "详解：" or "【解析】" or "解析：" — this is the EXPLANATION. SKIP it, it is NOT a question.
-
-## YOUR TASK
-
-Group lines into question blocks. For each block:
-1. Collect all question text lines (everything before the options)
-2. Combine multi-line question text into one string with NEWLINE between lines (use \n between separate dialogue lines or question parts)
-3. Extract A, B, C, D options (from one line or multiple lines)
-4. Extract answer (A/B/C/D)
-5. Output JSON
-
-## OUTPUT FORMAT
-
-Return a JSON array of objects:
-{
-  "content": "The complete question text as a single string. Use \\n to separate multiple lines (e.g. dialogue lines). If there was a blank (________) in the original, KEEP it as _________. Preserve the English as-is.",
-  "options": {"A": "option A text", "B": "option B text", "C": "option C text", "D": "option D text"},
-  "answer": "A"  (single letter A or B or C or D),
-  "explanation": "Extract the 【详解】text here. Include key grammar point if present. Return empty string if no explanation found."
-}
-
-## RULES
-
-- content: NEVER include the explanation text (【详解】...) in the question content. The explanation is a SEPARATE field.
-- content: The question text is the English question (with possible blank). If the question has a follow-up answer, include it: "—Do you know ___________ ?\n—It was introduced through the Silk Road."
-- options: ALWAYS an object with keys A, B, C, D. Each option must be the complete text.
-- options: Handle both "A．" (full-width dot), "A)" (parenthesis), and "A\t" (tab) styles.
-- answer: Must be exactly "A", "B", "C", or "D". Not "A．" or "．A".
-- If a line starts with 【详解】or 【答案】or 【解析】or 详解 or 答案 or 解析, it is METADATA, not content — skip it for the content field.
-- Questions with blanks (________) are valid MCQs — preserve the blank in content.
-- Return [] if no valid MCQs are found.
-- Return ONLY valid JSON array. No markdown fences, no explanation.
-"""
-
+RULES:
+- content: DO NOT include 【详解】text
+- answer: must be a single letter A/B/C/D (not "A．")
+- options: always A/B/C/D as keys
+- explanation: extract everything after 【详解】or 【解析】(can be empty string if not found)
+- Extract ALL questions found in the text
+- Return ONLY valid JSON array. No markdown fences."""
 
 def extract_text_from_docx(file_path: str) -> list[str]:
     doc = Document(file_path)
@@ -62,6 +29,8 @@ def extract_text_from_docx(file_path: str) -> list[str]:
 
 def _extract_json(text: str) -> str:
     """Extract the first valid JSON array from text."""
+    # Strip thinking tags that some models prepend
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
     text = re.sub(r"```json\s*", "", text, flags=re.IGNORECASE)
     text = re.sub(r"```\s*$", "", text, flags=re.MULTILINE)
     start = text.find('[')
@@ -72,24 +41,50 @@ def _extract_json(text: str) -> str:
 
 
 def _is_question_start(line: str) -> bool:
-    """Check if a line starts a new question block."""
-    # Numbered question: "1．" "1." "1、" at start, possibly with leading whitespace
-    if re.match(r'^\s*\d+[．.、]', line):
-        return True
-    # Source tag without number: "（2023·中考）" etc. — only if not mid-question
-    if re.match(r'^\s*（\d{4}', line):
-        return True
-    return False
+    """Check if a line starts a new question block.
+
+    Must match number prefix AND not look like a title.
+    Titles often contain keywords like '易错点', '专题', or are just a heading.
+    Real questions typically contain '?' or have option letters nearby.
+    """
+    # Must start with a number
+    if not re.match(r'^\s*\d+[．.、]', line):
+        return False
+    # Skip lines that look like section titles (no '?' and contain title keywords)
+    title_keywords = ['易错点', '专题', '考点', '知识点', '单元', '第一章', '第二章']
+    has_title_keyword = any(kw in line for kw in title_keywords)
+    # If it's a title keyword line without '?', treat as not a question
+    if has_title_keyword and '?' not in line:
+        return False
+    # Skip lines that look like standalone answer lines 'N．A'
+    if re.match(r'^\s*\d+[．.、]\s*[A-D]\s*$', line.strip()):
+        return False
+    return True
 
 
-def _is_option(line: str) -> bool:
-    """Check if a line is an option (starts with A/B/C/D)."""
-    return bool(re.match(r'^\s*[A-D][）).\t：:、]?\s*\S', line))
+def _is_answer_marker(line: str) -> bool:
+    """Check if a line is an answer marker like '1．C' or '1.C'."""
+    return bool(re.match(r'^\s*\d+[．.、]\s*[A-D]', line))
 
 
-def _is_answer(line: str) -> bool:
-    """Check if a line is an answer marker."""
-    return bool(re.search(r'【?\s*答案\s*】?\s*[A-D]', line))
+def _is_question_line(line: str) -> bool:
+    """
+    Check if a numbered line is a real question (vs. an answer marker).
+    '1．C' is an answer marker (ends with A/B/C/D directly after the number).
+    '1．(2023·...) —Question?' is a question.
+    '易错点05 动词的时态' is a title (contains title keywords).
+    """
+    # Must start with a number
+    if not re.match(r'^\s*\d+[．.、]', line):
+        return False
+    # 'N．A' (with optional space) at end = answer marker
+    if re.match(r'^\s*\d+[．.、]\s*[A-D]\s*$', line.strip()):
+        return False
+    # Skip title/section-header lines (contain title keywords)
+    title_keywords = ['易错点', '专题', '考点', '知识点', '单元', '第一章', '第二章']
+    if any(kw in line for kw in title_keywords):
+        return False
+    return True
 
 
 def _is_explanation(line: str) -> bool:
@@ -97,47 +92,142 @@ def _is_explanation(line: str) -> bool:
     return bool(re.search(r'【?\s*详解\s*】?\s*', line)) or bool(re.search(r'【?\s*解析\s*】?\s*', line))
 
 
-def _group_lines(lines: list[str]) -> list[list[str]]:
+def _preclassify_lines(paragraphs: list[str]) -> tuple[list[list[str]], list[list[str]]]:
     """
-    Group consecutive lines into question blocks.
-    A block starts at a numbered question and ends before the next numbered question.
+    Split all paragraphs into question blocks and answer/analysis blocks.
+    Returns (question_blocks, answer_blocks) in document order.
+
+    Format detection: count numbered lines that look like questions vs answers.
+    If the doc has many answer markers (N．A/B/C/D) among numbered lines,
+    it's Format B (questions and answers in separate sections).
     """
+    numbered = [(i, p) for i, p in enumerate(paragraphs)
+                if re.match(r'^\s*\d+[．.、]', p)]
+    q_count = sum(1 for _, p in numbered if _is_question_line(p))
+    a_count = sum(1 for _, p in numbered if _is_answer_marker(p))
+
+    # If significant number of answer markers → Format B
+    if a_count > 0 and a_count >= q_count * 0.3:
+        return _split_format_b(paragraphs)
+    else:
+        return _split_format_a(paragraphs)
+
+
+def _split_format_a(paragraphs: list[str]) -> tuple[list[list[str]], list[list[str]]]:
+    """Traditional format: questions and answers are in the same block."""
     blocks = []
     current = []
-    for line in lines:
+    first_q_found = False
+
+    for line in paragraphs:
         if _is_question_start(line):
+            first_q_found = True
             if current:
                 blocks.append(current)
             current = [line]
-        else:
+        elif first_q_found:
+            # Only accumulate lines after first question found
             current.append(line)
     if current:
         blocks.append(current)
-    return blocks
+    # Format A: answer blocks are empty (answers are inside question blocks)
+    return blocks, []
 
 
-def _parse_single_block(lines: list[str]) -> list[dict]:
-    """Parse a single question block via AI."""
+def _split_format_b(paragraphs: list[str]) -> tuple[list[list[str]], list[list[str]]]:
+    """
+    Format B: all questions first, then all answers/analyses.
+    Split into two sections at the first answer marker.
+    """
+    question_lines = []
+    answer_lines = []
+    seen_answer = False
+
+    for line in paragraphs:
+        if not seen_answer and _is_answer_marker(line):
+            seen_answer = True
+        if seen_answer:
+            answer_lines.append(line)
+        else:
+            question_lines.append(line)
+
+    # Group question lines into blocks (skip pre-title content)
+    question_blocks = []
+    current = []
+    first_q_found = False
+    for line in question_lines:
+        if _is_question_start(line):
+            first_q_found = True
+            if current:
+                question_blocks.append(current)
+            current = [line]
+        elif first_q_found:
+            current.append(line)
+    if current:
+        question_blocks.append(current)
+
+    # Group answer lines into blocks (each starts with N． or 【详解】)
+    answer_blocks = []
+    current = []
+    for line in answer_lines:
+        is_new = _is_answer_marker(line) or (not current and _is_explanation(line))
+        # Start new block on answer marker
+        if _is_answer_marker(line):
+            if current:
+                answer_blocks.append(current)
+            current = [line]
+        elif _is_explanation(line) and not current:
+            # Explanation without preceding answer marker (starts a block)
+            current.append(line)
+        elif current:
+            current.append(line)
+        # Skip standalone explanations that don't start a block
+    if current:
+        answer_blocks.append(current)
+
+    return question_blocks, answer_blocks
+
+
+def _match_answer_to_question(question_num: int, answer_blocks: list[list[str]]) -> str:
+    """
+    Find the answer+analysis block that corresponds to question_num.
+    Match by the number prefix in the first line (e.g., '1．C').
+    """
+    for block in answer_blocks:
+        if not block:
+            continue
+        first = block[0]
+        m = re.match(r'^\s*(\d+)[．.、]', first)
+        if m and int(m.group(1)) == question_num:
+            return '\n'.join(block)
+    return ''
+
+
 
 def _is_valid_question_block(block: list[str]) -> bool:
     """Return True if this block looks like a real MCQ (has numbered question start)."""
     if not block:
         return False
-    first = block[0]
-    return bool(re.match(r'^\s*\d+[．.、]', first))
+    return bool(_is_question_start(block[0]))
 
 
-def _parse_single_block(lines: list[str]) -> list[dict]:
-    """
-    Parse a single question block (list of lines) via AI.
-    The block may contain question text + options + answer + explanation.
-    """
-    if not lines:
-        return []
+def _extract_question_number(block: list[str]) -> int | None:
+    """Extract the question number from the first line of a block."""
+    if not block:
+        return None
+    m = re.match(r'^\s*(\d+)', block[0])
+    return int(m.group(1)) if m else None
 
-    chunk_text = "\n".join(f"[{i}] {line}" for i, line in enumerate(lines))
+
+def _parse_q_block_with_context(block: list[str], answer_text: str) -> list[dict]:
+    """Parse a question block via AI, optionally including answer context."""
+    if answer_text:
+        block_text = '\n'.join(f"[{i}] {line}" for i, line in enumerate(block)) + '\n---\n' + answer_text
+    else:
+        block_text = '\n'.join(f"[{i}] {line}" for i, line in enumerate(block))
+
     ai = AIClient()
-    response = ai.chat(PARSE_SYSTEM, chunk_text, max_tokens=2048)
+    response = ai.chat(PARSE_SYSTEM, block_text, max_tokens=2048)
     try:
         cleaned = _extract_json(response)
         result = json.loads(cleaned)
@@ -153,29 +243,36 @@ def _parse_single_block(lines: list[str]) -> list[dict]:
 def parse_docx_stream(paragraphs: list[str], paragraphs_per_chunk: int = 40,
                        progress_callback=None) -> list[dict]:
     """
-    Split paragraphs into question-aware chunks and parse each via AI.
-    Groups paragraphs into question blocks first, then parses each block individually.
-    Skips non-question blocks (section headers, TOC, etc.).
-    Calls progress_callback(block_idx, total_blocks) after each block.
+    Parse docx paragraphs into questions.
+    Supports:
+    - Format A: answers embedded inside question blocks
+    - Format B: all answers in a separate section (after first answer marker)
     """
-    blocks = _group_lines(paragraphs)
-    if not blocks:
-        return []
-
+    question_blocks, answer_blocks = _preclassify_lines(paragraphs)
+    total = len(question_blocks)
     all_questions = []
-    valid_blocks = [b for b in blocks if _is_valid_question_block(b)]
-    total = len(valid_blocks)
 
-    for idx, block in enumerate(blocks):
-        # Skip non-question blocks (section headers, empty, etc.)
+    for idx, block in enumerate(question_blocks):
         if not _is_valid_question_block(block):
             if progress_callback:
                 progress_callback(idx + 1, total)
             continue
 
-        questions = _parse_single_block(block)
+        # Format B: find matching answer text for this question
+        answer_text = ''
+        if answer_blocks:
+            q_num = _extract_question_number(block)
+            if q_num is not None:
+                answer_text = _match_answer_to_question(q_num, answer_blocks)
+
+        questions = _parse_q_block_with_context(block, answer_text)
         if questions:
             all_questions.extend(questions)
+        elif not answer_blocks:
+            # Format A fallback: parse without answer context
+            fallback = _parse_q_block_with_context(block, '')
+            all_questions.extend(fallback)
+
         if progress_callback:
             progress_callback(idx + 1, total)
 
